@@ -1,0 +1,58 @@
+{
+  "due_date": "2026-10-28",
+  "grand_total": 7815.65,
+  "invoice_date": "2026-10-28",
+  "line_items": [
+    {
+      "description": "Backend API Architecture Consulting",
+      "quantity": 10.0,
+      "total": 1500.0,
+      "unit_price": 150.0
+    },
+    {
+      "description": "Frontend React Component Design",
+      "quantity": 15.0,
+      "total": 1650.0,
+      "unit_price": 110.0
+    },
+    {
+      "description": "Database Indexing & Query Tuning",
+      "quantity": 5.0,
+      "total": 800.0,
+      "unit_price": 160.0
+    },
+    {
+      "description": "CI/CD Pipeline Security Hardening",
+      "quantity": 4.0,
+      "total": 560.0,
+      "unit_price": 140.0
+    },
+    {
+      "description": "Automated Unit & E2E Test Suite",
+      "quantity": 8.0,
+      "total": 760.0,
+      "unit_price": 95.0
+    },
+    {
+      "description": "Kubernetes Cluster Ingress Setup",
+      "quantity": 6.0,
+      "total": 1050.0,
+      "unit_price": 175.0
+    },
+    {
+      "description": "Technical Documentation & Runbooks",
+      "quantity": 5.0,
+      "total": 400.0,
+      "unit_price": 80.0
+    },
+    {
+      "description": "Post-Deployment Monitoring Retainer",
+      "quantity": 1.0,
+      "total": 500.0,
+      "unit_price": 500.0
+    }
+  ],
+  "subtotal": 7220.0,
+  "tax_amount": 595.65,
+  "vendor_name": "Synthetix Engineering Group"
+}

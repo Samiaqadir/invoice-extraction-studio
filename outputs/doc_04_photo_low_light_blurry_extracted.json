@@ -1,0 +1,16 @@
+{
+  "due_date": "2026-10-20",
+  "grand_total": 50.88,
+  "invoice_date": "2026-10-20",
+  "line_items": [
+    {
+      "description": "Premium Motor Oil 5W-30",
+      "quantity": 1.0,
+      "total": 38.0,
+      "unit_price": 38.0
+    }
+  ],
+  "subtotal": 47.0,
+  "tax_amount": 3.88,
+  "vendor_name": "Metro Express Mart"
+}

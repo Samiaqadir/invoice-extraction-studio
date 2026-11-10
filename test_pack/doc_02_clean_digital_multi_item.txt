@@ -1,0 +1,10 @@
+Apex Cloud Solutions LLC
+Invoice Date: 2026-10-15
+Due Date: 2026-11-15
+Enterprise Cloud Hosting - Oct 2026 1.0 $450.00 $450.00
+Managed Database Instance (PostgreSQL) 2.0 $125.00 $250.00
+SSL Wildcard Certificate (1 Year) 1.0 $85.00 $85.00
+Automated Backup Storage (500 GB) 5.0 $10.00 $50.00
+Subtotal: $835.00
+Tax: $66.80
+Grand Total: $901.80

@@ -1,0 +1,16 @@
+{
+  "due_date": "2026-10-01",
+  "grand_total": 1296.0,
+  "invoice_date": "2026-10-01",
+  "line_items": [
+    {
+      "description": "Annual Developer SaaS Subscription",
+      "quantity": 1.0,
+      "total": 1200.0,
+      "unit_price": 1200.0
+    }
+  ],
+  "subtotal": 1200.0,
+  "tax_amount": 96.0,
+  "vendor_name": "Nexus Software Inc"
+}

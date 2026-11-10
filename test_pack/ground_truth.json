@@ -1,0 +1,226 @@
+{
+  "doc_01_clean_digital_single_item.pdf": {
+    "due_date": "2026-10-31",
+    "grand_total": 1296.0,
+    "invoice_date": "2026-10-01",
+    "line_items": [
+      {
+        "description": "Annual Developer SaaS Subscription",
+        "quantity": 1.0,
+        "total": 1200.0,
+        "unit_price": 1200.0
+      }
+    ],
+    "subtotal": 1200.0,
+    "tax_amount": 96.0,
+    "vendor_name": "Nexus Software Inc"
+  },
+  "doc_02_clean_digital_multi_item.pdf": {
+    "due_date": "2026-11-15",
+    "grand_total": 901.8,
+    "invoice_date": "2026-10-15",
+    "line_items": [
+      {
+        "description": "Enterprise Cloud Hosting - Oct 2026",
+        "quantity": 1.0,
+        "total": 450.0,
+        "unit_price": 450.0
+      },
+      {
+        "description": "Managed Database Instance (PostgreSQL)",
+        "quantity": 2.0,
+        "total": 250.0,
+        "unit_price": 125.0
+      },
+      {
+        "description": "SSL Wildcard Certificate (1 Year)",
+        "quantity": 1.0,
+        "total": 85.0,
+        "unit_price": 85.0
+      },
+      {
+        "description": "Automated Backup Storage (500 GB)",
+        "quantity": 5.0,
+        "total": 50.0,
+        "unit_price": 10.0
+      }
+    ],
+    "subtotal": 835.0,
+    "tax_amount": 66.8,
+    "vendor_name": "Apex Cloud Solutions LLC"
+  },
+  "doc_03_photo_crumpled_receipt.png": {
+    "due_date": null,
+    "grand_total": 30.85,
+    "invoice_date": "2026-10-18",
+    "line_items": [
+      {
+        "description": "Artisan Latte (Large)",
+        "quantity": 2.0,
+        "total": 11.0,
+        "unit_price": 5.5
+      },
+      {
+        "description": "Avocado Sourdough Toast",
+        "quantity": 1.0,
+        "total": 13.0,
+        "unit_price": 13.0
+      },
+      {
+        "description": "Almond Croissant",
+        "quantity": 1.0,
+        "total": 4.5,
+        "unit_price": 4.5
+      }
+    ],
+    "subtotal": 28.5,
+    "tax_amount": 2.35,
+    "vendor_name": "Urban Cafe & Roastery"
+  },
+  "doc_04_photo_low_light_blurry.png": {
+    "due_date": null,
+    "grand_total": 50.88,
+    "invoice_date": "2026-10-20",
+    "line_items": [
+      {
+        "description": "Premium Motor Oil 5W-30",
+        "quantity": 1.0,
+        "total": 38.0,
+        "unit_price": 38.0
+      },
+      {
+        "description": "Windshield Fluid (1 Gal)",
+        "quantity": 2.0,
+        "total": 9.0,
+        "unit_price": 4.5
+      }
+    ],
+    "subtotal": 47.0,
+    "tax_amount": 3.88,
+    "vendor_name": "Metro Express Mart"
+  },
+  "doc_05_missing_tax_field.pdf": {
+    "due_date": "2026-11-22",
+    "grand_total": 2800.0,
+    "invoice_date": "2026-10-22",
+    "line_items": [
+      {
+        "description": "International Freight Handling (Air Cargo)",
+        "quantity": 1.0,
+        "total": 2450.0,
+        "unit_price": 2450.0
+      },
+      {
+        "description": "Customs Clearance & Documentation Fee",
+        "quantity": 1.0,
+        "total": 350.0,
+        "unit_price": 350.0
+      }
+    ],
+    "subtotal": 2800.0,
+    "tax_amount": null,
+    "vendor_name": "Global Trade Logistics B.V."
+  },
+  "doc_06_missing_dates_partial.pdf": {
+    "due_date": null,
+    "grand_total": 637.2,
+    "invoice_date": "2026-10-25",
+    "line_items": [
+      {
+        "description": "Heavy Duty Industrial Shelving Unit",
+        "quantity": 3.0,
+        "total": 540.0,
+        "unit_price": 180.0
+      },
+      {
+        "description": "Steel Anchor Bolts (Pack of 50)",
+        "quantity": 2.0,
+        "total": 50.0,
+        "unit_price": 25.0
+      }
+    ],
+    "subtotal": 590.0,
+    "tax_amount": 47.2,
+    "vendor_name": "Vertex Hardware Supply"
+  },
+  "doc_07_complex_multi_page_table.pdf": {
+    "due_date": "2026-11-28",
+    "grand_total": 7815.65,
+    "invoice_date": "2026-10-28",
+    "line_items": [
+      {
+        "description": "Backend API Architecture Consulting",
+        "quantity": 10.0,
+        "total": 1500.0,
+        "unit_price": 150.0
+      },
+      {
+        "description": "Frontend React Component Design",
+        "quantity": 15.0,
+        "total": 1650.0,
+        "unit_price": 110.0
+      },
+      {
+        "description": "Database Indexing & Query Tuning",
+        "quantity": 5.0,
+        "total": 800.0,
+        "unit_price": 160.0
+      },
+      {
+        "description": "CI/CD Pipeline Security Hardening",
+        "quantity": 4.0,
+        "total": 560.0,
+        "unit_price": 140.0
+      },
+      {
+        "description": "Automated Unit & E2E Test Suite",
+        "quantity": 8.0,
+        "total": 760.0,
+        "unit_price": 95.0
+      },
+      {
+        "description": "Kubernetes Cluster Ingress Setup",
+        "quantity": 6.0,
+        "total": 1050.0,
+        "unit_price": 175.0
+      },
+      {
+        "description": "Technical Documentation & Runbooks",
+        "quantity": 5.0,
+        "total": 400.0,
+        "unit_price": 80.0
+      },
+      {
+        "description": "Post-Deployment Monitoring Retainer",
+        "quantity": 1.0,
+        "total": 500.0,
+        "unit_price": 500.0
+      }
+    ],
+    "subtotal": 7220.0,
+    "tax_amount": 595.65,
+    "vendor_name": "Synthetix Engineering Group"
+  },
+  "doc_08_decimal_edge_case.png": {
+    "due_date": null,
+    "grand_total": 1450.55,
+    "invoice_date": "2026-10-30",
+    "line_items": [
+      {
+        "description": "Microscope Lens 50x",
+        "quantity": 1.0,
+        "total": 1250.0,
+        "unit_price": 1250.0
+      },
+      {
+        "description": "Calibration Slide 0.01mm",
+        "quantity": 2.0,
+        "total": 90.0,
+        "unit_price": 45.0
+      }
+    ],
+    "subtotal": 1340.0,
+    "tax_amount": 110.55,
+    "vendor_name": "Precision Optics Lab"
+  }
+}

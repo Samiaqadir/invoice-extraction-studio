@@ -1,0 +1,22 @@
+{
+  "due_date": "2026-10-25",
+  "grand_total": 637.2,
+  "invoice_date": "2026-10-25",
+  "line_items": [
+    {
+      "description": "Heavy Duty Industrial Shelving Unit",
+      "quantity": 3.0,
+      "total": 540.0,
+      "unit_price": 180.0
+    },
+    {
+      "description": "Steel Anchor Bolts (Pack of 50)",
+      "quantity": 2.0,
+      "total": 50.0,
+      "unit_price": 25.0
+    }
+  ],
+  "subtotal": 590.0,
+  "tax_amount": 47.2,
+  "vendor_name": "Vertex Hardware Supply"
+}

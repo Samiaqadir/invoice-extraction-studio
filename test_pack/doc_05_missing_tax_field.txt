@@ -1,0 +1,7 @@
+Global Trade Logistics B.V.
+Invoice Date: 2026-10-22
+Due Date: 2026-11-22
+International Freight Handling (Air Cargo) 1.0 $2450.00 $2450.00
+Customs Clearance & Documentation Fee 1.0 $350.00 $350.00
+Subtotal: $2800.00
+Grand Total: $2800.00

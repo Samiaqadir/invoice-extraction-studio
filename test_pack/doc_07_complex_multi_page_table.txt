@@ -1,0 +1,14 @@
+Synthetix Engineering Group
+Invoice Date: 2026-10-28
+Due Date: 2026-11-28
+Backend API Architecture Consulting 10.0 $150.00 $1500.00
+Frontend React Component Design 15.0 $110.00 $1650.00
+Database Indexing & Query Tuning 5.0 $160.00 $800.00
+CI/CD Pipeline Security Hardening 4.0 $140.00 $560.00
+Automated Unit & E2E Test Suite 8.0 $95.00 $760.00
+Kubernetes Cluster Ingress Setup 6.0 $175.00 $1050.00
+Technical Documentation & Runbooks 5.0 $80.00 $400.00
+Post-Deployment Monitoring Retainer 1.0 $500.00 $500.00
+Subtotal: $7220.00
+Tax: $595.65
+Grand Total: $7815.65

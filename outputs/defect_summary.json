@@ -1,0 +1,21 @@
+{
+  "total_documents": 8,
+  "perfect_documents": 2,
+  "defective_documents": 6,
+  "total_defects": 15,
+  "defects_by_type": {
+    "field_missing": 2,
+    "ocr_misrecognition": 11,
+    "decimal_misalignment": 0,
+    "mathematical_discrepancy": 2
+  },
+  "defects_by_severity": {
+    "critical": 0,
+    "high": 4,
+    "medium": 11,
+    "low": 0
+  },
+  "document_accuracy_rate": 25.0,
+  "field_accuracy_rate": 81.25,
+  "timestamp": "2026-11-10T10:52:29.247815+00:00"
+}

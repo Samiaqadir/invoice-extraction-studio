@@ -1,0 +1,22 @@
+{
+  "due_date": "2026-10-18",
+  "grand_total": 30.85,
+  "invoice_date": "2026-10-18",
+  "line_items": [
+    {
+      "description": "Avocado Sourdough Toast",
+      "quantity": 1.0,
+      "total": 13.0,
+      "unit_price": 13.0
+    },
+    {
+      "description": "Almond Croissant",
+      "quantity": 1.0,
+      "total": 4.5,
+      "unit_price": 4.5
+    }
+  ],
+  "subtotal": 28.5,
+  "tax_amount": 2.35,
+  "vendor_name": "Urban Cafe & Roastery"
+}

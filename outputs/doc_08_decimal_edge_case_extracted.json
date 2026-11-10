@@ -1,0 +1,22 @@
+{
+  "due_date": "2026-10-30",
+  "grand_total": 1450.55,
+  "invoice_date": "2026-10-30",
+  "line_items": [
+    {
+      "description": "Microscope Lens 50x",
+      "quantity": 1.0,
+      "total": 1250.0,
+      "unit_price": 1250.0
+    },
+    {
+      "description": "Calibration Slide 0.01mm",
+      "quantity": 2.0,
+      "total": 90.0,
+      "unit_price": 45.0
+    }
+  ],
+  "subtotal": 1340.0,
+  "tax_amount": 110.55,
+  "vendor_name": "Precision Optics Lab"
+}
