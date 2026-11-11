@@ -15,6 +15,10 @@ env/
 venv/
 ENV/
 
+# Temporary UI preview caches & uploads
+outputs/previews/
+outputs/uploads/
+
 # Distribution & Build
 build/
 dist/
@@ -25,4 +29,3 @@ dist/
 .idea/
 .DS_Store
 Thumbs.db
-

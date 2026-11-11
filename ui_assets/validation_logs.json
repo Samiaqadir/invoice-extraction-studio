@@ -270,5 +270,14 @@
         "badge": "green"
       }
     }
+  },
+  {
+    "timestamp": "2026-11-11T10:25:29.260878+00:00",
+    "document_id": "doc_01_clean_digital_single_item.pdf",
+    "overall_confidence": 96.4,
+    "status": "High Confidence",
+    "math_verified": true,
+    "vendor_name": "Nexus Software Inc",
+    "grand_total": 1296
   }
 ]

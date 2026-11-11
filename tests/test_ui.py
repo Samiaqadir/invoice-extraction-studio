@@ -1,12 +1,22 @@
 """
-Unit Tests for ui/app.py and ui/confidence.py
+Unit Tests for ui/app.py, ui/converter.py, and ui/confidence.py
 """
 
+import io
+from pathlib import Path
 from fastapi.testclient import TestClient
+from PIL import Image
 import pytest
 
 from ui.app import app
 from ui.confidence import compute_confidence_scores, evaluate_invoice_math
+from ui.converter import (
+    create_fallback_text_image,
+    get_document_page_count,
+    is_image_blank,
+    render_document_to_pil,
+    render_document_to_png_bytes,
+)
 from ui.exporter import invoice_to_csv_string
 
 client = TestClient(app)
@@ -30,12 +40,57 @@ def test_list_documents():
     assert "doc_03_photo_crumpled_receipt.png" in doc_names
 
 
-def test_document_preview():
-    """Verify PDF rendering to PNG preview endpoint."""
-    response = client.get("/api/document/doc_01_clean_digital_single_item.pdf/preview")
+def test_document_preview_rendering():
+    """Verify PDF rendering to PNG preview endpoint returns non-empty image."""
+    response = client.get("/api/document/doc_01_clean_digital_single_item.pdf/preview?page_idx=0")
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/png"
     assert len(response.content) > 1000
+
+    # Verify PNG bytes can be loaded by PIL and is not blank
+    img = Image.open(io.BytesIO(response.content))
+    assert img.size[0] > 0
+    assert img.size[1] > 0
+    assert not is_image_blank(img)
+
+
+def test_converter_multi_tier():
+    """Verify converter handles PDFs and images cleanly without blank frames."""
+    pdf_path = Path("test_pack/doc_02_clean_digital_multi_item.pdf")
+    img_pdf = render_document_to_pil(pdf_path)
+    assert not is_image_blank(img_pdf)
+    assert img_pdf.mode == "RGB"
+
+    png_path = Path("test_pack/doc_03_photo_crumpled_receipt.png")
+    img_png = render_document_to_pil(png_path)
+    assert not is_image_blank(img_png)
+    assert img_png.mode == "RGB"
+
+
+def test_converter_fallback_text():
+    """Verify fallback text layout generator creates a crisp non-blank preview."""
+    fallback_img = create_fallback_text_image(
+        Path("test_pack/doc_01_clean_digital_single_item.pdf")
+    )
+    assert not is_image_blank(fallback_img)
+    assert fallback_img.size == (1000, 1400)
+
+
+def test_document_upload_and_preview():
+    """Verify file upload endpoint handles new PDFs and lists them."""
+    test_pdf_content = Path("test_pack/doc_01_clean_digital_single_item.pdf").read_bytes()
+    upload_res = client.post(
+        "/api/upload",
+        files={"file": ("custom_test_upload.pdf", test_pdf_content, "application/pdf")},
+    )
+    assert upload_res.status_code == 200
+    data = upload_res.json()
+    assert data["name"] == "custom_test_upload.pdf"
+
+    # Verify preview works for uploaded file
+    preview_res = client.get("/api/document/custom_test_upload.pdf/preview")
+    assert preview_res.status_code == 200
+    assert preview_res.headers["content-type"] == "image/png"
 
 
 def test_extract_and_confidence_scoring():
@@ -52,6 +107,7 @@ def test_extract_and_confidence_scoring():
     data = response.json()
     assert "invoice_data" in data
     assert "confidence" in data
+    assert "page_count" in data
 
     conf = data["confidence"]
     assert conf["overall_score"] >= 80.0

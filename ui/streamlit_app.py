@@ -10,20 +10,22 @@ Provides an interactive side-by-side invoice review and auditing workspace:
 
 from __future__ import annotations
 
-import base64
-from datetime import datetime, timezone
 import io
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from PIL import Image
-import pypdfium2 as pdfium
 import streamlit as st
 
 from pipeline.extractor import extract_invoice
-from schema.invoice_schema import Invoice, LineItem, MathematicalDiscrepancyError
+from schema.invoice_schema import Invoice, LineItem
 from ui.confidence import compute_confidence_scores, evaluate_invoice_math
+from ui.converter import (
+    get_document_page_count,
+    is_image_blank,
+    render_document_to_pil,
+)
 from ui.exporter import export_invoice_files, invoice_to_csv_string
 
 # Page Configuration
@@ -34,7 +36,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom Styling for Badges and Layout
+# Custom Styling
 st.markdown(
     """
     <style>
@@ -106,17 +108,16 @@ st.markdown(
 ROOT_DIR = Path(__file__).resolve().parent.parent
 TEST_PACK_DIR = ROOT_DIR / "test_pack"
 OUTPUTS_DIR = ROOT_DIR / "outputs"
-UI_ASSETS_DIR = ROOT_DIR / "ui_assets"
+UPLOADS_DIR = OUTPUTS_DIR / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
-# Initialize Session State
+# Session State Initialization
 if "current_doc_name" not in st.session_state:
     st.session_state.current_doc_name = "doc_01_clean_digital_single_item.pdf"
 if "invoice_data" not in st.session_state:
     st.session_state.invoice_data = {}
-if "line_items_data" not in st.session_state:
-    st.session_state.line_items_data = []
-if "is_modified" not in st.session_state:
-    st.session_state.is_modified = False
+if "selected_page" not in st.session_state:
+    st.session_state.selected_page = 0
 
 
 def render_confidence_badge(badge_type: str, score: float, label: str = "") -> str:
@@ -130,64 +131,19 @@ def render_confidence_badge(badge_type: str, score: float, label: str = "") -> s
         return f'<span class="badge-red">✖ {text}</span>'
 
 
-def load_document_data(doc_path: Path) -> Dict[str, Any]:
+def load_document_data(doc_path: Path, engine: str = "local_ocr", force: bool = False) -> Dict[str, Any]:
     """Loads existing extracted JSON or extracts fresh from document."""
     extracted_file = OUTPUTS_DIR / f"{doc_path.stem}_extracted.json"
-    if extracted_file.exists():
+    if not force and extracted_file.exists():
         try:
             return json.loads(extracted_file.read_text(encoding="utf-8"))
         except Exception:
             pass
 
-    # Fallback to fresh extraction
     invoice = extract_invoice(
-        doc_path, engine="local_ocr", save_output=True, strict_math=False
+        doc_path, engine=engine, save_output=True, strict_math=False, output_dir=OUTPUTS_DIR
     )
     return invoice.model_dump()
-
-
-def render_document_preview(file_path: Path):
-    """Renders PDF pages or image directly into the left column."""
-    suffix = file_path.suffix.lower()
-
-    if suffix == ".pdf":
-        try:
-            doc = pdfium.PdfDocument(file_path)
-            num_pages = len(doc)
-            page_select = 0
-            if num_pages > 1:
-                page_select = st.selectbox(
-                    f"Page (Total {num_pages})",
-                    options=list(range(num_pages)),
-                    format_func=lambda x: f"Page {x + 1} of {num_pages}",
-                )
-            page = doc[page_select]
-            pil_image = page.render(scale=2.0).to_pil()
-            st.image(
-                pil_image,
-                caption=f"{file_path.name} (Page {page_select + 1})",
-                use_container_width=True,
-            )
-        except Exception as e:
-            st.error(f"Error rendering PDF: {e}")
-            st.download_button(
-                "Download Original PDF",
-                data=file_path.read_bytes(),
-                file_name=file_path.name,
-                mime="application/pdf",
-            )
-    elif suffix in (".png", ".jpg", ".jpeg", ".webp", ".bmp"):
-        try:
-            img = Image.open(file_path)
-            st.image(
-                img,
-                caption=f"{file_path.name} ({img.width}x{img.height})",
-                use_container_width=True,
-            )
-        except Exception as e:
-            st.error(f"Error loading image: {e}")
-    else:
-        st.warning(f"Preview unavailable for {suffix} format.")
 
 
 # ---------------- SIDEBAR NAVIGATION ----------------
@@ -209,18 +165,27 @@ with st.sidebar:
     ]
 
     available_docs = [f.name for f in TEST_PACK_DIR.iterdir() if f.name in test_docs]
-    available_docs = sorted(available_docs) if available_docs else test_docs
+    if UPLOADS_DIR.exists():
+        for uf in UPLOADS_DIR.iterdir():
+            if uf.suffix.lower() in (".pdf", ".png", ".jpg", ".jpeg", ".webp"):
+                available_docs.append(uf.name)
+
+    available_docs = sorted(list(set(available_docs)))
+
+    current_idx = (
+        available_docs.index(st.session_state.current_doc_name)
+        if st.session_state.current_doc_name in available_docs
+        else 0
+    )
 
     selected_doc = st.selectbox(
-        "Choose Benchmark Document:",
+        "Choose Invoice Document:",
         options=available_docs,
-        index=available_docs.index(st.session_state.current_doc_name)
-        if st.session_state.current_doc_name in available_docs
-        else 0,
+        index=current_idx,
     )
 
     uploaded_file = st.file_uploader(
-        "Or Upload Custom Document",
+        "Or Upload New Document",
         type=["pdf", "png", "jpg", "jpeg", "webp"],
     )
 
@@ -231,51 +196,44 @@ with st.sidebar:
         help="'auto' uses Gemini if API key is present, else robust local OCR.",
     )
 
-    # Re-extract or load document
-    load_needed = False
+    # Determine active document path
     active_path = TEST_PACK_DIR / selected_doc
+    if not active_path.exists():
+        active_path = UPLOADS_DIR / selected_doc
 
     if uploaded_file is not None:
-        save_uploaded_path = OUTPUTS_DIR / uploaded_file.name
-        save_uploaded_path.write_bytes(uploaded_file.getvalue())
-        active_path = save_uploaded_path
+        saved_upload = UPLOADS_DIR / uploaded_file.name
+        saved_upload.write_bytes(uploaded_file.getvalue())
+        active_path = saved_upload
         if st.session_state.current_doc_name != uploaded_file.name:
             st.session_state.current_doc_name = uploaded_file.name
-            load_needed = True
-    elif selected_doc != st.session_state.current_doc_name:
-        st.session_state.current_doc_name = selected_doc
-        load_needed = True
-
-    if st.button("🔄 Re-Extract Document", use_container_width=True) or load_needed:
-        with st.spinner("Extracting invoice entities..."):
-            extracted = extract_invoice(
-                active_path,
-                engine=engine_choice,
-                save_output=True,
-                strict_math=False,
-                output_dir=OUTPUTS_DIR,
-            )
-            st.session_state.invoice_data = extracted.model_dump()
-            st.session_state.line_items_data = [
-                dict(item) for item in st.session_state.invoice_data.get("line_items", [])
-            ]
-            st.session_state.is_modified = False
+            st.session_state.selected_page = 0
+            st.session_state.invoice_data = load_document_data(active_path, engine=engine_choice, force=True)
             st.rerun()
 
-    # Load initial data if empty
+    # Instant synchronization when switching dropdown
+    if selected_doc != st.session_state.current_doc_name:
+        st.session_state.current_doc_name = selected_doc
+        st.session_state.selected_page = 0
+        st.session_state.invoice_data = load_document_data(active_path, engine=engine_choice, force=False)
+        st.rerun()
+
+    if st.button("🔄 Re-Extract Document", use_container_width=True):
+        with st.spinner("Extracting fresh invoice entities..."):
+            st.session_state.invoice_data = load_document_data(active_path, engine=engine_choice, force=True)
+            st.rerun()
+
+    # Initial data load if empty
     if not st.session_state.invoice_data:
-        st.session_state.invoice_data = load_document_data(active_path)
-        st.session_state.line_items_data = [
-            dict(item) for item in st.session_state.invoice_data.get("line_items", [])
-        ]
+        st.session_state.invoice_data = load_document_data(active_path, engine=engine_choice, force=False)
 
     st.markdown("---")
-    st.subheader("Benchmark Information")
+    st.subheader("Indicator Legend")
     st.markdown(
         """
-        - **Green (>90%)**: High confidence.
-        - **Amber (70-90%)**: Verification recommended.
-        - **Red (<70%)**: Flagged or arithmetic discrepancy.
+        - 🟢 **Green (>90%)**: High confidence.
+        - 🟡 **Amber (70-90%)**: Review recommended.
+        - 🔴 **Red (<70%)**: Mismatch / discrepancy.
         """
     )
 
@@ -287,6 +245,7 @@ col_left, col_right = st.columns([1, 1], gap="large")
 conf_eval = compute_confidence_scores(st.session_state.invoice_data)
 field_scores = conf_eval["field_scores"]
 math_eval = conf_eval["math_eval"]
+num_pages = get_document_page_count(active_path)
 
 
 # ================ LEFT COLUMN: ORIGINAL VIEWER ================
@@ -296,11 +255,49 @@ with col_left:
         unsafe_allow_html=True,
     )
 
+    # Multi-page Controls if > 1 page
+    if num_pages > 1:
+        col_p1, col_p2 = st.columns([2, 1])
+        with col_p1:
+            st.session_state.selected_page = st.selectbox(
+                f"Page Selector (Total {num_pages} Pages)",
+                options=list(range(num_pages)),
+                index=st.session_state.selected_page if st.session_state.selected_page < num_pages else 0,
+                format_func=lambda x: f"Page {x + 1} of {num_pages}",
+            )
+        with col_p2:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            st.download_button(
+                "📥 Raw PDF",
+                data=active_path.read_bytes(),
+                file_name=active_path.name,
+                mime="application/pdf",
+                use_container_width=True,
+            )
+
+    # Render Document Image with Multi-tier Converter
     with st.container(border=True):
-        render_document_preview(active_path)
+        try:
+            pil_image = render_document_to_pil(
+                active_path,
+                page_idx=st.session_state.selected_page,
+                scale=2.0,
+            )
+            st.image(
+                pil_image,
+                caption=f"{active_path.name} (Page {st.session_state.selected_page + 1}/{num_pages})",
+                use_container_width=True,
+            )
+        except Exception as e:
+            st.error(f"Error rendering preview: {e}")
+            st.download_button(
+                "Download Original File",
+                data=active_path.read_bytes(),
+                file_name=active_path.name,
+            )
 
     st.caption(
-        f"File: `{active_path.name}` | Size: {active_path.stat().st_size / 1024.0:.1f} KB"
+        f"Format: `{active_path.suffix.upper()}` | Size: {active_path.stat().st_size / 1024.0:.1f} KB | Pages: {num_pages}"
     )
 
 
@@ -335,7 +332,7 @@ with col_right:
             unsafe_allow_html=True,
         )
 
-    # Editable Fields Form
+    # Editable Form Fields
     with st.container(border=True):
         st.markdown("#### Header Metadata")
 
@@ -349,7 +346,7 @@ with col_right:
             new_vendor = st.text_input(
                 "Vendor Name *",
                 value=st.session_state.invoice_data.get("vendor_name", ""),
-                help=field_scores["vendor_name"]["reason"],
+                key=f"vendor_{st.session_state.current_doc_name}",
             )
         with col_v2:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
@@ -357,9 +354,8 @@ with col_right:
 
         if new_vendor != st.session_state.invoice_data.get("vendor_name"):
             st.session_state.invoice_data["vendor_name"] = new_vendor
-            st.session_state.is_modified = True
 
-        # Invoice Date & Due Date
+        # Dates
         col_d1, col_d2 = st.columns(2)
         with col_d1:
             d_badge = render_confidence_badge(
@@ -370,14 +366,12 @@ with col_right:
             new_inv_date = st.text_input(
                 "Invoice Date",
                 value=st.session_state.invoice_data.get("invoice_date") or "",
-                label_visibility="collapsed",
                 placeholder="YYYY-MM-DD",
+                label_visibility="collapsed",
+                key=f"inv_date_{st.session_state.current_doc_name}",
             )
             if new_inv_date != (st.session_state.invoice_data.get("invoice_date") or ""):
-                st.session_state.invoice_data["invoice_date"] = (
-                    new_inv_date if new_inv_date.strip() else None
-                )
-                st.session_state.is_modified = True
+                st.session_state.invoice_data["invoice_date"] = new_inv_date.strip() or None
 
         with col_d2:
             due_badge = render_confidence_badge(
@@ -388,14 +382,12 @@ with col_right:
             new_due_date = st.text_input(
                 "Due Date",
                 value=st.session_state.invoice_data.get("due_date") or "",
-                label_visibility="collapsed",
                 placeholder="YYYY-MM-DD",
+                label_visibility="collapsed",
+                key=f"due_date_{st.session_state.current_doc_name}",
             )
             if new_due_date != (st.session_state.invoice_data.get("due_date") or ""):
-                st.session_state.invoice_data["due_date"] = (
-                    new_due_date if new_due_date.strip() else None
-                )
-                st.session_state.is_modified = True
+                st.session_state.invoice_data["due_date"] = new_due_date.strip() or None
 
         st.markdown("---")
         st.markdown("#### Itemized Line Items")
@@ -407,8 +399,10 @@ with col_right:
         )
         st.markdown(items_badge, unsafe_allow_html=True)
 
-        # Interactive Data Editor for Line Items
+        # Dynamic Data Editor keyed by document name to prevent cross-doc stale state
         line_items_list = st.session_state.invoice_data.get("line_items", [])
+        editor_key = f"line_items_editor_{st.session_state.current_doc_name}"
+        
         edited_items = st.data_editor(
             line_items_list,
             column_config={
@@ -427,16 +421,14 @@ with col_right:
             },
             num_rows="dynamic",
             use_container_width=True,
-            key="line_items_editor",
+            key=editor_key,
         )
 
-        # Update session state if edited
         if edited_items != line_items_list:
             st.session_state.invoice_data["line_items"] = edited_items
-            st.session_state.is_modified = True
             st.rerun()
 
-        # Helper button to auto-recompute totals from qty * price
+        # Recalculate and Auto-sum helpers
         col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
             if st.button("⚡ Recalculate Line Item Totals (`qty * unit_price`)"):
@@ -444,7 +436,6 @@ with col_right:
                     q = float(it.get("quantity") or 0.0)
                     p = float(it.get("unit_price") or 0.0)
                     it["total"] = round(q * p, 2)
-                st.session_state.is_modified = True
                 st.rerun()
 
         with col_btn2:
@@ -459,7 +450,6 @@ with col_right:
                 st.session_state.invoice_data["subtotal"] = item_sum
                 tax = float(st.session_state.invoice_data.get("tax_amount") or 0.0)
                 st.session_state.invoice_data["grand_total"] = round(item_sum + tax, 2)
-                st.session_state.is_modified = True
                 st.rerun()
 
         st.markdown("---")
@@ -474,6 +464,7 @@ with col_right:
                 value=float(sub_val) if sub_val is not None else 0.0,
                 step=1.0,
                 format="%.2f",
+                key=f"subtotal_{st.session_state.current_doc_name}",
             )
         with col_s2:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
@@ -485,7 +476,6 @@ with col_right:
 
         if new_sub != (sub_val if sub_val is not None else 0.0):
             st.session_state.invoice_data["subtotal"] = new_sub
-            st.session_state.is_modified = True
 
         # Tax Amount
         col_t1, col_t2 = st.columns([3, 1])
@@ -494,6 +484,7 @@ with col_right:
             is_tax_exempt = st.checkbox(
                 "Tax Exempt / Not Specified",
                 value=(tax_val is None),
+                key=f"tax_exempt_{st.session_state.current_doc_name}",
             )
             if not is_tax_exempt:
                 new_tax = st.number_input(
@@ -501,6 +492,7 @@ with col_right:
                     value=float(tax_val) if tax_val is not None else 0.0,
                     step=0.5,
                     format="%.2f",
+                    key=f"tax_{st.session_state.current_doc_name}",
                 )
             else:
                 new_tax = None
@@ -514,7 +506,6 @@ with col_right:
 
         if new_tax != tax_val:
             st.session_state.invoice_data["tax_amount"] = new_tax
-            st.session_state.is_modified = True
 
         # Grand Total
         col_g1, col_g2 = st.columns([3, 1])
@@ -525,6 +516,7 @@ with col_right:
                 value=gt_val,
                 step=1.0,
                 format="%.2f",
+                key=f"grand_total_{st.session_state.current_doc_name}",
             )
         with col_g2:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
@@ -536,24 +528,19 @@ with col_right:
 
         if new_gt != gt_val:
             st.session_state.invoice_data["grand_total"] = new_gt
-            st.session_state.is_modified = True
 
     # ---------------- EXPORT FUNCTIONALITY ----------------
     st.markdown("### 📤 Export & Save Reviewed Invoice")
 
-    # Validate against Pydantic schema
     try:
         validated_invoice = Invoice.model_validate(
             st.session_state.invoice_data, context={"strict_math": False}
         )
         json_output = validated_invoice.to_deterministic_json(indent=2)
-        csv_output = invoice_to_csv_string(st.session_state.invoice_data)
-        schema_valid = True
-    except Exception as e:
-        st.error(f"Pydantic Validation Error: {e}")
+    except Exception:
         json_output = json.dumps(st.session_state.invoice_data, indent=2)
-        csv_output = invoice_to_csv_string(st.session_state.invoice_data)
-        schema_valid = False
+
+    csv_output = invoice_to_csv_string(st.session_state.invoice_data)
 
     col_exp1, col_exp2, col_exp3 = st.columns(3)
 

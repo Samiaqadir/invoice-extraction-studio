@@ -2,6 +2,7 @@
 FastAPI Web Application for Invoice Extraction Studio
 =====================================================
 Lightweight, high-performance web interface providing:
+- Robust multi-tier document conversion (pypdfium2, pdfplumber, PIL text fallback).
 - Side-by-side original invoice viewer (PDF/Image) and extracted editable Pydantic form.
 - Real-time confidence scoring & color indicators (Green, Amber, Red).
 - Zero-latency client-side & server-side inline editing and arithmetic validation.
@@ -15,19 +16,23 @@ import io
 import json
 import logging
 from pathlib import Path
+import shutil
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, File, HTTPException, Response, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from PIL import Image
 from pydantic import BaseModel
-import pypdfium2 as pdfium
 
 from pipeline.extractor import extract_invoice
 from schema.invoice_schema import Invoice
 from ui.confidence import compute_confidence_scores, evaluate_invoice_math
+from ui.converter import (
+    get_document_page_count,
+    render_document_to_pil,
+    render_document_to_png_bytes,
+)
 from ui.exporter import export_invoice_files, invoice_to_csv_string
 
 logger = logging.getLogger("ui.app")
@@ -35,6 +40,7 @@ logger = logging.getLogger("ui.app")
 ROOT_DIR = Path(__file__).resolve().parent.parent
 TEST_PACK_DIR = ROOT_DIR / "test_pack"
 OUTPUTS_DIR = ROOT_DIR / "outputs"
+UPLOADS_DIR = OUTPUTS_DIR / "uploads"
 UI_ASSETS_DIR = ROOT_DIR / "ui_assets"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -42,12 +48,13 @@ TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 UI_ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
     title="Invoice Extraction Studio",
     description="Interactive Human-in-the-Loop Invoice Extraction & Auditing Studio",
-    version="1.0.0",
+    version="1.1.0",
 )
 
 app.add_middleware(
@@ -75,33 +82,92 @@ class SaveRequest(BaseModel):
     invoice_data: Dict[str, Any]
 
 
+def _resolve_document_path(doc_name: str) -> Path:
+    """Finds document across test_pack, uploads, and outputs."""
+    candidates = [
+        TEST_PACK_DIR / doc_name,
+        UPLOADS_DIR / doc_name,
+        OUTPUTS_DIR / doc_name,
+    ]
+    for p in candidates:
+        if p.exists() and p.is_file():
+            return p
+    raise HTTPException(status_code=404, detail=f"Document '{doc_name}' not found.")
+
+
 @app.get("/api/documents")
 def list_documents() -> List[Dict[str, Any]]:
     """Lists benchmark test pack documents and uploaded files."""
     docs = []
+    seen = set()
+
+    # 1. Test pack documents
     if TEST_PACK_DIR.exists():
         for f in sorted(TEST_PACK_DIR.iterdir()):
-            if f.suffix.lower() in (".pdf", ".png", ".jpg", ".jpeg", ".webp"):
+            if f.is_file() and f.suffix.lower() in (".pdf", ".png", ".jpg", ".jpeg", ".webp"):
+                seen.add(f.name)
                 docs.append(
                     {
                         "name": f.name,
                         "size_kb": round(f.stat().st_size / 1024.0, 1),
                         "format": f.suffix.lower().replace(".", "").upper(),
-                        "is_benchmark": True,
+                        "pages": get_document_page_count(f),
+                        "source": "benchmark",
+                    }
+                )
+
+    # 2. Uploaded documents
+    if UPLOADS_DIR.exists():
+        for f in sorted(UPLOADS_DIR.iterdir()):
+            if f.is_file() and f.name not in seen and f.suffix.lower() in (".pdf", ".png", ".jpg", ".jpeg", ".webp"):
+                seen.add(f.name)
+                docs.append(
+                    {
+                        "name": f.name,
+                        "size_kb": round(f.stat().st_size / 1024.0, 1),
+                        "format": f.suffix.lower().replace(".", "").upper(),
+                        "pages": get_document_page_count(f),
+                        "source": "uploaded",
                     }
                 )
     return docs
 
 
+@app.get("/api/document/{doc_name}/preview")
+def get_document_preview(
+    doc_name: str,
+    page_idx: int = Query(default=0, ge=0),
+    scale: float = Query(default=2.0, ge=1.0, le=4.0),
+    refresh: bool = False,
+):
+    """
+    Renders any PDF page or image as a high-resolution, non-blank PNG image.
+    Uses multi-tier fallback (pypdfium2 -> pdfplumber -> PIL synthetic layout).
+    """
+    target = _resolve_document_path(doc_name)
+    try:
+        png_bytes = render_document_to_png_bytes(
+            target, page_idx=page_idx, scale=scale, force_refresh=refresh
+        )
+        return Response(
+            content=png_bytes,
+            media_type="image/png",
+            headers={
+                "Cache-Control": "no-cache" if refresh else "public, max-age=3600",
+                "X-Document-Pages": str(get_document_page_count(target)),
+            },
+        )
+    except Exception as e:
+        logger.error("Preview rendering failed for '%s': %s", doc_name, e)
+        raise HTTPException(
+            status_code=500, detail=f"Document rendering failure: {e}"
+        )
+
+
 @app.get("/api/document/{doc_name}/file")
 def get_document_file(doc_name: str):
-    """Streams the raw file (PDF or image) for direct browser preview."""
-    target = TEST_PACK_DIR / doc_name
-    if not target.exists():
-        target = OUTPUTS_DIR / doc_name
-    if not target.exists():
-        raise HTTPException(status_code=404, detail="Document not found")
-
+    """Streams the raw file (PDF or image) for direct download or browser preview."""
+    target = _resolve_document_path(doc_name)
     mime = (
         "application/pdf"
         if target.suffix.lower() == ".pdf"
@@ -110,42 +176,33 @@ def get_document_file(doc_name: str):
     return FileResponse(target, media_type=mime)
 
 
-@app.get("/api/document/{doc_name}/preview")
-def get_document_preview(doc_name: str, page_idx: int = 0):
-    """Renders a PDF page or image as a high-resolution PNG image."""
-    target = TEST_PACK_DIR / doc_name
-    if not target.exists():
-        target = OUTPUTS_DIR / doc_name
-    if not target.exists():
-        raise HTTPException(status_code=404, detail="Document not found")
+@app.post("/api/upload")
+async def upload_document(file: UploadFile = File(...)) -> Dict[str, Any]:
+    """Uploads a custom invoice file (PDF or Image) for review."""
+    filename = Path(file.filename).name
+    suffix = Path(filename).suffix.lower()
+    if suffix not in (".pdf", ".png", ".jpg", ".jpeg", ".webp", ".bmp"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported format '{suffix}'. Allowed: PDF, PNG, JPG, WEBP.",
+        )
 
-    suffix = target.suffix.lower()
-    if suffix == ".pdf":
-        try:
-            pdf = pdfium.PdfDocument(target)
-            if page_idx < 0 or page_idx >= len(pdf):
-                page_idx = 0
-            page = pdf[page_idx]
-            pil_image = page.render(scale=2.0).to_pil()
-            buf = io.BytesIO()
-            pil_image.save(buf, format="PNG")
-            return Response(content=buf.getvalue(), media_type="image/png")
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"PDF rendering error: {e}")
-    elif suffix in (".png", ".jpg", ".jpeg", ".webp", ".bmp"):
-        return FileResponse(target, media_type="image/png")
-    else:
-        raise HTTPException(status_code=400, detail="Unsupported preview format")
+    target_path = UPLOADS_DIR / filename
+    with open(target_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    return {
+        "status": "success",
+        "name": filename,
+        "size_kb": round(target_path.stat().st_size / 1024.0, 1),
+        "pages": get_document_page_count(target_path),
+    }
 
 
 @app.post("/api/extract")
 def extract_document(req: ExtractRequest) -> Dict[str, Any]:
     """Extracts or retrieves cached extraction for a document with confidence scores."""
-    doc_path = TEST_PACK_DIR / req.document_name
-    if not doc_path.exists():
-        doc_path = OUTPUTS_DIR / req.document_name
-    if not doc_path.exists():
-        raise HTTPException(status_code=404, detail="Document not found")
+    doc_path = _resolve_document_path(req.document_name)
 
     cached_file = OUTPUTS_DIR / f"{doc_path.stem}_extracted.json"
     invoice_dict: Optional[Dict[str, Any]] = None
@@ -167,6 +224,7 @@ def extract_document(req: ExtractRequest) -> Dict[str, Any]:
             )
             invoice_dict = invoice.model_dump()
         except Exception as e:
+            logger.error("Extraction error for '%s': %s", req.document_name, e)
             raise HTTPException(status_code=500, detail=f"Extraction failure: {e}")
 
     confidence_data = compute_confidence_scores(
@@ -175,6 +233,7 @@ def extract_document(req: ExtractRequest) -> Dict[str, Any]:
 
     return {
         "document_name": doc_path.name,
+        "page_count": get_document_page_count(doc_path),
         "invoice_data": invoice_dict,
         "confidence": confidence_data,
     }
@@ -237,7 +296,6 @@ def save_reviewed_invoice(req: SaveRequest) -> Dict[str, Any]:
     )
     conf = compute_confidence_scores(req.invoice_data)
 
-    # Update audit test case log
     log_file = UI_ASSETS_DIR / "validation_logs.json"
     logs = []
     if log_file.exists():
@@ -266,14 +324,12 @@ def save_reviewed_invoice(req: SaveRequest) -> Dict[str, Any]:
     }
 
 
-# Serve SPA index
 @app.get("/", response_class=HTMLResponse)
 def index_page():
     index_html_path = TEMPLATES_DIR / "index.html"
     return HTMLResponse(content=index_html_path.read_text(encoding="utf-8"))
 
 
-# Mount Static Files
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 if __name__ == "__main__":

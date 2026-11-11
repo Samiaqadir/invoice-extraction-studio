@@ -345,3 +345,4 @@ def compute_confidence_scores(
         "field_scores": field_scores,
         "math_eval": math_eval,
     }
+

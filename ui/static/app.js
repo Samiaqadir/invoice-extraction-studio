@@ -1,27 +1,40 @@
 /**
  * Invoice Extraction Studio — Client-Side Application
- * Handles side-by-side document preview, inline editing,
- * real-time arithmetic recalculation, confidence indicators, and exports.
+ * Provides robust document preview rendering (PDF and image),
+ * inline interactive editing, real-time recalculation, confidence indicators, and exports.
  */
 
-// State
+// Global State
 let currentDocName = "";
 let currentData = null;
 let originalData = null;
-let currentZoom = 1.0;
+let currentPageIdx = 0;
+let totalPages = 1;
+let currentZoomMode = "fit"; // "fit" or numeric zoom factor
+let currentZoomFactor = 1.0;
 let validateDebounceTimer = null;
 
 // DOM Elements
 const docSelect = document.getElementById("docSelect");
+const fileUploadInput = document.getElementById("fileUploadInput");
 const engineSelect = document.getElementById("engineSelect");
 const btnReExtract = document.getElementById("btnReExtract");
 const overallScoreBadge = document.getElementById("overallScoreBadge");
 
+const viewerContainer = document.getElementById("viewerContainer");
+const formSection = document.getElementById("formSection");
 const viewerFileName = document.getElementById("viewerFileName");
 const viewerMeta = document.getElementById("viewerMeta");
 const docImage = document.getElementById("docImage");
 const viewerLoading = document.getElementById("viewerLoading");
 const imageWrapper = document.getElementById("imageWrapper");
+
+const pageControls = document.getElementById("pageControls");
+const pageIndicator = document.getElementById("pageIndicator");
+const btnPrevPage = document.getElementById("btnPrevPage");
+const btnNextPage = document.getElementById("btnNextPage");
+
+const btnFitWidth = document.getElementById("btnFitWidth");
 const btnZoomIn = document.getElementById("btnZoomIn");
 const btnZoomOut = document.getElementById("btnZoomOut");
 const btnZoomReset = document.getElementById("btnZoomReset");
@@ -57,22 +70,38 @@ const btnSaveToDisk = document.getElementById("btnSaveToDisk");
 const saveStatus = document.getElementById("saveStatus");
 
 
-// Initialize
+// Initialization
 document.addEventListener("DOMContentLoaded", async () => {
   setupEventListeners();
   await loadDocumentsList();
 });
 
 function setupEventListeners() {
-  docSelect.addEventListener("change", () => loadDocument(docSelect.value, false));
+  docSelect.addEventListener("change", () => {
+    currentPageIdx = 0;
+    loadDocument(docSelect.value, false);
+  });
+
+  fileUploadInput.addEventListener("change", handleFileUpload);
   btnReExtract.addEventListener("click", () => loadDocument(docSelect.value, true));
   
-  // Zoom Controls
-  btnZoomIn.addEventListener("click", () => updateZoom(currentZoom + 0.15));
-  btnZoomOut.addEventListener("click", () => updateZoom(Math.max(0.4, currentZoom - 0.15)));
-  btnZoomReset.addEventListener("click", () => updateZoom(1.0));
+  // Page Navigation for Multi-page Documents
+  btnPrevPage.addEventListener("click", () => changePage(-1));
+  btnNextPage.addEventListener("click", () => changePage(1));
 
-  // Field Inputs (Real-time local verification)
+  // Zoom & Scaling Controls
+  btnFitWidth.addEventListener("click", () => setZoomMode("fit"));
+  btnZoomReset.addEventListener("click", () => setZoomMode(1.0));
+  btnZoomIn.addEventListener("click", () => {
+    const next = (currentZoomMode === "fit" ? 1.0 : currentZoomFactor) + 0.2;
+    setZoomMode(Math.min(3.0, next));
+  });
+  btnZoomOut.addEventListener("click", () => {
+    const next = (currentZoomMode === "fit" ? 1.0 : currentZoomFactor) - 0.2;
+    setZoomMode(Math.max(0.4, next));
+  });
+
+  // Form Field Listeners (Immediate local arithmetic & debounced server check)
   inputVendor.addEventListener("input", onFieldChange);
   inputInvDate.addEventListener("input", onFieldChange);
   inputDueDate.addEventListener("input", onFieldChange);
@@ -93,7 +122,7 @@ function setupEventListeners() {
     onFieldChange();
   });
 
-  // Line Item Table Actions
+  // Table Line Item Actions
   btnAddLineItem.addEventListener("click", addLineItemRow);
   btnRecalcLines.addEventListener("click", recalculateAllLineProducts);
   btnSumToSubtotal.addEventListener("click", applyItemsSumToSubtotal);
@@ -123,7 +152,49 @@ async function loadDocumentsList() {
       loadDocument(docs[0].name, false);
     }
   } catch (err) {
-    console.error("Failed to fetch documents:", err);
+    console.error("Failed to fetch document catalog:", err);
+  }
+}
+
+
+async function handleFileUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  setOverallStatus("loading", 0, "Uploading...");
+  try {
+    const res = await fetch("/api/upload", {
+      method: "POST",
+      body: formData
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Upload failed");
+    }
+
+    const info = await res.json();
+
+    // Add to dropdown if not already present
+    let opt = Array.from(docSelect.options).find(o => o.value === info.name);
+    if (!opt) {
+      opt = document.createElement("option");
+      opt.value = info.name;
+      opt.textContent = `★ ${info.name} (Uploaded, ${info.size_kb} KB)`;
+      docSelect.insertBefore(opt, docSelect.firstChild);
+    }
+    docSelect.value = info.name;
+
+    currentPageIdx = 0;
+    await loadDocument(info.name, true);
+  } catch (err) {
+    alert("Upload error: " + err.message);
+    setOverallStatus("red", 0, "Upload Failed");
+  } finally {
+    fileUploadInput.value = "";
   }
 }
 
@@ -132,20 +203,18 @@ async function loadDocument(docName, reExtract = false) {
   currentDocName = docName;
   viewerFileName.textContent = docName;
   btnOpenRaw.href = `/api/document/${encodeURIComponent(docName)}/file`;
-  
-  // Show image loading state
-  viewerLoading.classList.remove("hidden");
-  docImage.classList.add("hidden");
-  docImage.src = `/api/document/${encodeURIComponent(docName)}/preview?page_idx=0&t=${Date.now()}`;
-  
-  docImage.onload = () => {
-    viewerLoading.classList.add("hidden");
-    docImage.classList.remove("hidden");
-  };
 
-  // Fetch extraction
+  // Reset scroll containers to top immediately so document header is in view
+  viewerContainer.scrollTop = 0;
+  viewerContainer.scrollLeft = 0;
+  formSection.scrollTop = 0;
+
+  // Render Left Document Image
+  renderDocumentImage(docName, currentPageIdx);
+
+  // Fetch / Extract Form Data
+  setOverallStatus("loading", 0, "Extracting...");
   try {
-    setOverallStatus("loading", 0, "Extracting...");
     const engine = engineSelect.value;
     const res = await fetch("/api/extract", {
       method: "POST",
@@ -166,10 +235,106 @@ async function loadDocument(docName, reExtract = false) {
     currentData = JSON.parse(JSON.stringify(payload.invoice_data));
     originalData = JSON.parse(JSON.stringify(payload.invoice_data));
 
+    // Update Multi-page status
+    totalPages = payload.page_count || 1;
+    updatePageControls();
+
     renderFormFields(currentData, payload.confidence);
   } catch (err) {
-    alert("Extraction error: " + err.message);
+    renderAlertBanner("red", `Extraction Error: ${escapeHtml(err.message)}`);
     setOverallStatus("red", 0, "Error");
+  }
+}
+
+
+function renderDocumentImage(docName, pageIdx = 0) {
+  viewerLoading.classList.remove("hidden");
+  docImage.classList.add("hidden");
+
+  // Construct URL with timestamp to bust cache when needed
+  const previewUrl = `/api/document/${encodeURIComponent(docName)}/preview?page_idx=${pageIdx}&scale=2.0&t=${Date.now()}`;
+  
+  // Create fresh image load
+  const imgLoader = new Image();
+  imgLoader.onload = () => {
+    docImage.src = previewUrl;
+    viewerLoading.classList.add("hidden");
+    docImage.classList.remove("hidden");
+    applyZoomStyles();
+  };
+
+  imgLoader.onerror = () => {
+    viewerLoading.innerHTML = `
+      <div class="text-center p-6 bg-slate-900 border border-slate-800 rounded-lg max-w-sm">
+        <div class="text-amber-400 text-2xl mb-2">⚠️</div>
+        <div class="text-sm font-semibold text-slate-200 mb-1">Preview Generation Failed</div>
+        <div class="text-xs text-slate-400 mb-4">The document could not be converted to a preview frame.</div>
+        <a href="/api/document/${encodeURIComponent(docName)}/file" target="_blank" class="inline-block text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded font-medium">
+          Open Raw Document ↗
+        </a>
+      </div>
+    `;
+    viewerLoading.classList.remove("hidden");
+    docImage.classList.add("hidden");
+  };
+
+  imgLoader.src = previewUrl;
+}
+
+
+function updatePageControls() {
+  if (totalPages > 1) {
+    pageControls.classList.remove("hidden");
+    pageIndicator.textContent = `Page ${currentPageIdx + 1} / ${totalPages}`;
+    btnPrevPage.disabled = (currentPageIdx <= 0);
+    btnNextPage.disabled = (currentPageIdx >= totalPages - 1);
+  } else {
+    pageControls.classList.add("hidden");
+  }
+}
+
+
+function changePage(delta) {
+  const newPage = currentPageIdx + delta;
+  if (newPage >= 0 && newPage < totalPages) {
+    currentPageIdx = newPage;
+    updatePageControls();
+    renderDocumentImage(currentDocName, currentPageIdx);
+    viewerContainer.scrollTop = 0;
+  }
+}
+
+
+function setZoomMode(mode) {
+  currentZoomMode = mode;
+  if (typeof mode === "number") {
+    currentZoomFactor = mode;
+  }
+  applyZoomStyles();
+}
+
+
+function applyZoomStyles() {
+  if (!docImage) return;
+
+  if (currentZoomMode === "fit") {
+    // Fit width: max-w-full guarantees no horizontal overflow while maintaining aspect ratio
+    imageWrapper.style.transform = "none";
+    imageWrapper.style.width = "100%";
+    imageWrapper.style.maxWidth = "800px";
+    docImage.style.width = "100%";
+    docImage.style.height = "auto";
+    docImage.style.maxWidth = "100%";
+    viewerMeta.textContent = "Fit Width";
+  } else {
+    // Explicit zoom factor
+    imageWrapper.style.transform = `scale(${currentZoomFactor})`;
+    imageWrapper.style.transformOrigin = "top center";
+    imageWrapper.style.width = "auto";
+    imageWrapper.style.maxWidth = "none";
+    docImage.style.width = "auto";
+    docImage.style.maxWidth = "none";
+    viewerMeta.textContent = `${Math.round(currentZoomFactor * 100)}%`;
   }
 }
 
@@ -226,7 +391,6 @@ function renderLineItems(items) {
       </td>
     `;
 
-    // Row input listeners for instant inline calculation
     const qtyInput = tr.querySelector(".item-qty");
     const priceInput = tr.querySelector(".item-price");
     const totalInput = tr.querySelector(".item-total");
@@ -435,7 +599,7 @@ function applyConfidenceBadges(confidence) {
   if (fs.tax_amount) setBadge(badgeTax, fs.tax_amount.badge, `${fs.tax_amount.score.toFixed(0)}%`);
   if (fs.grand_total) setBadge(badgeGrandTotal, fs.grand_total.badge, `${fs.grand_total.score.toFixed(0)}%`);
 
-  // Render Alert Banner if alerts present
+  // Render Alert Banner
   if (confidence.math_eval && !confidence.math_eval.is_arithmetically_valid) {
     const messages = confidence.math_eval.alerts.map(a => a.message).join("<br>");
     renderAlertBanner("red", messages);
@@ -452,38 +616,31 @@ function setBadge(elem, type, text) {
 
 
 function setOverallStatus(badgeType, score, label) {
-  overallScoreBadge.className = `flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border badge-${badgeType}`;
+  overallScoreBadge.className = `flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border badge-${badgeType}`;
   overallScoreBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-current"></span><span>${label} (${score.toFixed(0)}%)</span>`;
 }
 
 
 function renderAlertBanner(type, htmlMessage) {
   if (type === "red") {
-    mathBanner.className = "m-6 mb-0 p-4 rounded-xl border flex items-start gap-3 bg-red-50 border-red-200 text-red-800 text-xs";
+    mathBanner.className = "m-6 mb-0 p-3.5 rounded-xl border flex items-start gap-2.5 bg-red-50 border-red-200 text-red-800 text-xs";
     mathBanner.innerHTML = `
-      <span class="text-base">⚠️</span>
+      <span class="text-base leading-none">⚠️</span>
       <div class="flex-1">
         <div class="font-bold">Mathematical Discrepancy Detected</div>
-        <div class="mt-0.5 leading-relaxed">${htmlMessage}</div>
+        <div class="mt-0.5 leading-relaxed text-[11px]">${htmlMessage}</div>
       </div>
     `;
   } else {
-    mathBanner.className = "m-6 mb-0 p-4 rounded-xl border flex items-start gap-3 bg-emerald-50 border-emerald-200 text-emerald-800 text-xs";
+    mathBanner.className = "m-6 mb-0 p-3.5 rounded-xl border flex items-start gap-2.5 bg-emerald-50 border-emerald-200 text-emerald-800 text-xs";
     mathBanner.innerHTML = `
-      <span class="text-base">✅</span>
+      <span class="text-base leading-none">✅</span>
       <div class="flex-1">
         <div class="font-bold">Arithmetic Balanced</div>
-        <div class="mt-0.5">${htmlMessage}</div>
+        <div class="mt-0.5 text-[11px]">${htmlMessage}</div>
       </div>
     `;
   }
-}
-
-
-function updateZoom(newZoom) {
-  currentZoom = Math.min(2.5, Math.max(0.4, newZoom));
-  imageWrapper.style.transform = `scale(${currentZoom})`;
-  viewerMeta.textContent = `${Math.round(currentZoom * 100)}% Zoom`;
 }
 
 
