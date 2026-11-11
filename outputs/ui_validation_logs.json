@@ -1,0 +1,274 @@
+[
+  {
+    "document_id": "doc_01_clean_digital_single_item.pdf",
+    "overall_confidence": 96.4,
+    "confidence_badge": "green",
+    "status": "High Confidence",
+    "math_verified": true,
+    "alerts_count": 0,
+    "field_breakdown": {
+      "vendor_name": {
+        "score": 96.0,
+        "badge": "green"
+      },
+      "invoice_date": {
+        "score": 97.0,
+        "badge": "green"
+      },
+      "due_date": {
+        "score": 95.0,
+        "badge": "green"
+      },
+      "subtotal": {
+        "score": 97.0,
+        "badge": "green"
+      },
+      "tax_amount": {
+        "score": 95.0,
+        "badge": "green"
+      },
+      "grand_total": {
+        "score": 99.0,
+        "badge": "green"
+      }
+    }
+  },
+  {
+    "document_id": "doc_02_clean_digital_multi_item.pdf",
+    "overall_confidence": 96.4,
+    "confidence_badge": "green",
+    "status": "High Confidence",
+    "math_verified": true,
+    "alerts_count": 0,
+    "field_breakdown": {
+      "vendor_name": {
+        "score": 96.0,
+        "badge": "green"
+      },
+      "invoice_date": {
+        "score": 97.0,
+        "badge": "green"
+      },
+      "due_date": {
+        "score": 95.0,
+        "badge": "green"
+      },
+      "subtotal": {
+        "score": 97.0,
+        "badge": "green"
+      },
+      "tax_amount": {
+        "score": 95.0,
+        "badge": "green"
+      },
+      "grand_total": {
+        "score": 99.0,
+        "badge": "green"
+      }
+    }
+  },
+  {
+    "document_id": "doc_03_photo_crumpled_receipt.png",
+    "overall_confidence": 95.4,
+    "confidence_badge": "green",
+    "status": "High Confidence",
+    "math_verified": true,
+    "alerts_count": 0,
+    "field_breakdown": {
+      "vendor_name": {
+        "score": 96.0,
+        "badge": "green"
+      },
+      "invoice_date": {
+        "score": 97.0,
+        "badge": "green"
+      },
+      "due_date": {
+        "score": 88.0,
+        "badge": "amber"
+      },
+      "subtotal": {
+        "score": 97.0,
+        "badge": "green"
+      },
+      "tax_amount": {
+        "score": 95.0,
+        "badge": "green"
+      },
+      "grand_total": {
+        "score": 99.0,
+        "badge": "green"
+      }
+    }
+  },
+  {
+    "document_id": "doc_04_photo_low_light_blurry.png",
+    "overall_confidence": 95.4,
+    "confidence_badge": "green",
+    "status": "High Confidence",
+    "math_verified": true,
+    "alerts_count": 0,
+    "field_breakdown": {
+      "vendor_name": {
+        "score": 96.0,
+        "badge": "green"
+      },
+      "invoice_date": {
+        "score": 97.0,
+        "badge": "green"
+      },
+      "due_date": {
+        "score": 88.0,
+        "badge": "amber"
+      },
+      "subtotal": {
+        "score": 97.0,
+        "badge": "green"
+      },
+      "tax_amount": {
+        "score": 95.0,
+        "badge": "green"
+      },
+      "grand_total": {
+        "score": 99.0,
+        "badge": "green"
+      }
+    }
+  },
+  {
+    "document_id": "doc_05_missing_tax_field.pdf",
+    "overall_confidence": 96.0,
+    "confidence_badge": "green",
+    "status": "High Confidence",
+    "math_verified": true,
+    "alerts_count": 0,
+    "field_breakdown": {
+      "vendor_name": {
+        "score": 96.0,
+        "badge": "green"
+      },
+      "invoice_date": {
+        "score": 97.0,
+        "badge": "green"
+      },
+      "due_date": {
+        "score": 95.0,
+        "badge": "green"
+      },
+      "subtotal": {
+        "score": 97.0,
+        "badge": "green"
+      },
+      "tax_amount": {
+        "score": 92.0,
+        "badge": "green"
+      },
+      "grand_total": {
+        "score": 99.0,
+        "badge": "green"
+      }
+    }
+  },
+  {
+    "document_id": "doc_06_missing_dates_partial.pdf",
+    "overall_confidence": 95.4,
+    "confidence_badge": "green",
+    "status": "High Confidence",
+    "math_verified": true,
+    "alerts_count": 0,
+    "field_breakdown": {
+      "vendor_name": {
+        "score": 96.0,
+        "badge": "green"
+      },
+      "invoice_date": {
+        "score": 97.0,
+        "badge": "green"
+      },
+      "due_date": {
+        "score": 88.0,
+        "badge": "amber"
+      },
+      "subtotal": {
+        "score": 97.0,
+        "badge": "green"
+      },
+      "tax_amount": {
+        "score": 95.0,
+        "badge": "green"
+      },
+      "grand_total": {
+        "score": 99.0,
+        "badge": "green"
+      }
+    }
+  },
+  {
+    "document_id": "doc_07_complex_multi_page_table.pdf",
+    "overall_confidence": 96.4,
+    "confidence_badge": "green",
+    "status": "High Confidence",
+    "math_verified": true,
+    "alerts_count": 0,
+    "field_breakdown": {
+      "vendor_name": {
+        "score": 96.0,
+        "badge": "green"
+      },
+      "invoice_date": {
+        "score": 97.0,
+        "badge": "green"
+      },
+      "due_date": {
+        "score": 95.0,
+        "badge": "green"
+      },
+      "subtotal": {
+        "score": 97.0,
+        "badge": "green"
+      },
+      "tax_amount": {
+        "score": 95.0,
+        "badge": "green"
+      },
+      "grand_total": {
+        "score": 99.0,
+        "badge": "green"
+      }
+    }
+  },
+  {
+    "document_id": "doc_08_decimal_edge_case.png",
+    "overall_confidence": 95.4,
+    "confidence_badge": "green",
+    "status": "High Confidence",
+    "math_verified": true,
+    "alerts_count": 0,
+    "field_breakdown": {
+      "vendor_name": {
+        "score": 96.0,
+        "badge": "green"
+      },
+      "invoice_date": {
+        "score": 97.0,
+        "badge": "green"
+      },
+      "due_date": {
+        "score": 88.0,
+        "badge": "amber"
+      },
+      "subtotal": {
+        "score": 97.0,
+        "badge": "green"
+      },
+      "tax_amount": {
+        "score": 95.0,
+        "badge": "green"
+      },
+      "grand_total": {
+        "score": 99.0,
+        "badge": "green"
+      }
+    }
+  }
+]

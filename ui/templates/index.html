@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoice Extraction Studio — Review & Audit Workbench</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="bg-slate-50 text-slate-800 h-screen flex flex-col font-['Inter',sans-serif]">
+
+  <!-- Top App Navigation -->
+  <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shadow-sm z-20">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xl shadow-md">
+        🧾
+      </div>
+      <div>
+        <h1 class="text-base font-bold text-slate-900 leading-tight">Invoice Extraction Studio</h1>
+        <p class="text-xs text-slate-500">Human-in-the-Loop Review, Audit & Verification</p>
+      </div>
+    </div>
+
+    <!-- Document Selector & Controls -->
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2">
+        <label for="docSelect" class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Document:</label>
+        <select id="docSelect" class="bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 font-medium">
+          <!-- Populated by JavaScript -->
+        </select>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <label for="engineSelect" class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Engine:</label>
+        <select id="engineSelect" class="bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 font-medium">
+          <option value="auto">Auto (Gemini / OCR)</option>
+          <option value="local_ocr" selected>Local OCR Fallback</option>
+          <option value="gemini">Gemini Multimodal</option>
+        </select>
+      </div>
+
+      <button id="btnReExtract" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-300 flex items-center gap-1.5 transition">
+        <span>🔄</span> Re-Extract
+      </button>
+
+      <!-- Overall Status Badge -->
+      <div id="overallScoreBadge" class="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border bg-slate-100 text-slate-600 border-slate-300">
+        <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+        <span>Loading...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Side-by-Side Workspace -->
+  <main class="flex-1 flex overflow-hidden">
+    
+    <!-- LEFT COLUMN: Original Document Viewer -->
+    <section class="w-1/2 flex flex-col border-r border-slate-200 bg-slate-900 text-white relative">
+      <!-- Viewer Toolbar -->
+      <div class="bg-slate-800/90 backdrop-blur px-4 py-2 border-b border-slate-700 flex items-center justify-between text-xs">
+        <div class="flex items-center gap-2 text-slate-300">
+          <span class="font-semibold text-slate-200" id="viewerFileName">Document.pdf</span>
+          <span class="text-slate-500">|</span>
+          <span id="viewerMeta" class="text-slate-400">100% Zoom</span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button id="btnZoomOut" title="Zoom Out" class="p-1 hover:bg-slate-700 rounded text-slate-300 hover:text-white px-2">－</button>
+          <button id="btnZoomReset" title="Reset Zoom" class="p-1 hover:bg-slate-700 rounded text-slate-300 hover:text-white px-2">Reset</button>
+          <button id="btnZoomIn" title="Zoom In" class="p-1 hover:bg-slate-700 rounded text-slate-300 hover:text-white px-2">＋</button>
+          <span class="text-slate-600">|</span>
+          <a id="btnOpenRaw" target="_blank" class="p-1 hover:bg-slate-700 rounded text-slate-300 hover:text-white px-2 cursor-pointer" title="Open Original File">↗ Pop-out</a>
+        </div>
+      </div>
+
+      <!-- Document Image/PDF Viewport -->
+      <div id="viewerContainer" class="flex-1 overflow-auto flex items-center justify-center p-6 bg-slate-950">
+        <div id="imageWrapper" class="transition-transform duration-100 shadow-2xl origin-top">
+          <img id="docImage" src="" alt="Invoice Preview" class="max-w-none rounded border border-slate-800 hidden">
+          <div id="viewerLoading" class="text-slate-400 text-sm flex items-center gap-2">
+            <svg class="animate-spin h-5 w-5 text-indigo-400" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            </svg>
+            Loading Document Preview...
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT COLUMN: Extracted Editable Form Fields -->
+    <section class="w-1/2 flex flex-col bg-slate-50 overflow-y-auto">
+      
+      <!-- Top Dynamic Alert Banner -->
+      <div id="mathBanner" class="m-6 mb-0 p-4 rounded-xl border flex items-start gap-3 transition-all duration-200">
+        <!-- Rendered dynamically by app.js -->
+      </div>
+
+      <div class="p-6 space-y-6">
+
+        <!-- Card 1: Header Entities -->
+        <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide flex items-center gap-2">
+              <span>🏢</span> Vendor & Invoice Metadata
+            </h2>
+            <span class="text-xs text-slate-400">Pydantic v2 Validated</span>
+          </div>
+
+          <!-- Vendor Name -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="text-xs font-semibold text-slate-700">Vendor / Merchant Name <span class="text-red-500">*</span></label>
+              <span id="badgeVendor" class="badge">--</span>
+            </div>
+            <input type="text" id="inputVendor" class="w-full text-sm font-medium border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition">
+          </div>
+
+          <!-- Invoice Date & Due Date -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="text-xs font-semibold text-slate-700">Invoice Date</label>
+                <span id="badgeInvDate" class="badge">--</span>
+              </div>
+              <input type="text" id="inputInvDate" placeholder="YYYY-MM-DD" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-mono focus:ring-2 focus:ring-indigo-500 transition">
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="text-xs font-semibold text-slate-700">Payment Due Date</label>
+                <span id="badgeDueDate" class="badge">--</span>
+              </div>
+              <input type="text" id="inputDueDate" placeholder="YYYY-MM-DD" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-mono focus:ring-2 focus:ring-indigo-500 transition">
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Itemized Line Items Table -->
+        <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div class="flex items-center gap-3">
+              <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide flex items-center gap-2">
+                <span>📋</span> Itemized Line Items
+              </h2>
+              <span id="badgeLineItems" class="badge">--</span>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button id="btnRecalcLines" class="text-xs font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg border border-indigo-200 transition" title="Auto-multiply Quantity x Unit Price">
+                ⚡ Recalc Products
+              </button>
+              <button id="btnAddLineItem" class="text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg transition shadow-sm">
+                ＋ Add Item
+              </button>
+            </div>
+          </div>
+
+          <!-- Items Table -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr class="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider border-b border-slate-200">
+                  <th class="py-2.5 px-3">Description</th>
+                  <th class="py-2.5 px-3 w-20 text-right">Qty</th>
+                  <th class="py-2.5 px-3 w-28 text-right">Unit Price ($)</th>
+                  <th class="py-2.5 px-3 w-28 text-right">Total ($)</th>
+                  <th class="py-2.5 px-2 w-12 text-center"></th>
+                </tr>
+              </thead>
+              <tbody id="lineItemsTableBody" class="divide-y divide-slate-100 font-medium">
+                <!-- Dynamically populated rows -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="flex justify-between items-center pt-2 text-xs text-slate-500">
+            <span id="calcItemsSumLabel">Calculated Rows Sum: <b>$0.00</b></span>
+            <button id="btnSumToSubtotal" class="text-indigo-600 hover:text-indigo-800 font-semibold underline">
+              Apply Sum to Subtotal
+            </button>
+          </div>
+        </div>
+
+        <!-- Card 3: Financial Totals & Taxes -->
+        <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h2 class="text-sm font-bold text-slate-900 uppercase tracking-wide flex items-center gap-2">
+              <span>💳</span> Financial Totals & Taxes
+            </h2>
+            <span class="text-xs text-slate-400">Strict Sum Verification</span>
+          </div>
+
+          <div class="space-y-3">
+            <!-- Subtotal -->
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-xs font-semibold text-slate-700">Subtotal Amount ($)</label>
+                <div class="text-[11px] text-slate-400">Net charge before taxes</div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span id="badgeSubtotal" class="badge">--</span>
+                <input type="number" id="inputSubtotal" step="0.01" class="w-36 text-right text-sm font-mono font-medium border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500">
+              </div>
+            </div>
+
+            <!-- Tax Amount -->
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-xs font-semibold text-slate-700">Tax Amount ($)</label>
+                <div class="flex items-center gap-2 text-[11px] text-slate-500">
+                  <input type="checkbox" id="checkTaxExempt" class="rounded text-indigo-600 focus:ring-indigo-500">
+                  <label for="checkTaxExempt">Tax Exempt / 0%</label>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span id="badgeTax" class="badge">--</span>
+                <input type="number" id="inputTax" step="0.01" class="w-36 text-right text-sm font-mono font-medium border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500">
+              </div>
+            </div>
+
+            <div class="border-t border-slate-100 pt-3"></div>
+
+            <!-- Grand Total -->
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-bold text-slate-900">Grand Total ($) <span class="text-red-500">*</span></label>
+                <div class="text-[11px] text-slate-500">Subtotal + Tax Amount</div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span id="badgeGrandTotal" class="badge">--</span>
+                <input type="number" id="inputGrandTotal" step="0.01" class="w-36 text-right text-base font-mono font-bold text-slate-900 border-2 border-slate-400 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 bg-slate-50">
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Sticky Bottom Action & Export Bar -->
+      <footer class="sticky bottom-0 bg-white border-t border-slate-200 px-6 py-4 flex items-center justify-between shadow-lg z-10 mt-auto">
+        <div class="flex items-center gap-2">
+          <button id="btnReset" class="text-xs font-medium text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-100 transition">
+            ↩ Revert to Original
+          </button>
+          <span id="saveStatus" class="text-xs text-slate-500 ml-2"></span>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button id="btnDownloadJson" class="text-xs font-semibold px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg border border-slate-300 flex items-center gap-1.5 transition">
+            <span>📥</span> Download JSON
+          </button>
+
+          <button id="btnDownloadCsv" class="text-xs font-semibold px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg border border-emerald-300 flex items-center gap-1.5 transition">
+            <span>📊</span> Download CSV
+          </button>
+
+          <button id="btnSaveToDisk" class="text-xs font-bold px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-sm flex items-center gap-1.5 transition">
+            <span>💾</span> Save Reviewed
+          </button>
+        </div>
+      </footer>
+    </section>
+
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
