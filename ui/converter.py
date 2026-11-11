@@ -229,3 +229,4 @@ def render_document_to_png_bytes(
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
     return buf.getvalue()
+
