@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 from PIL import Image
 import streamlit as st
 
-from pipeline.extractor import extract_invoice
+from pipeline.extractor import NonInvoiceDocumentError, extract_invoice
 from schema.invoice_schema import Invoice, LineItem
 from ui.confidence import compute_confidence_scores, evaluate_invoice_math
 from ui.converter import (
@@ -132,7 +132,7 @@ def render_confidence_badge(badge_type: str, score: float, label: str = "") -> s
 
 
 def load_document_data(doc_path: Path, engine: str = "local_ocr", force: bool = False) -> Dict[str, Any]:
-    """Loads existing extracted JSON or extracts fresh from document."""
+    """Loads existing extracted JSON or extracts fresh from document with non-invoice guardrails."""
     extracted_file = OUTPUTS_DIR / f"{doc_path.stem}_extracted.json"
     if not force and extracted_file.exists():
         try:
@@ -140,10 +140,35 @@ def load_document_data(doc_path: Path, engine: str = "local_ocr", force: bool = 
         except Exception:
             pass
 
-    invoice = extract_invoice(
-        doc_path, engine=engine, save_output=True, strict_math=False, output_dir=OUTPUTS_DIR
-    )
-    return invoice.model_dump()
+    try:
+        invoice = extract_invoice(
+            doc_path, engine=engine, save_output=True, strict_math=False, output_dir=OUTPUTS_DIR
+        )
+        return invoice.model_dump()
+    except NonInvoiceDocumentError as e:
+        st.error(f"⚠️ Document Upload Rejected by Guardrails: {e}")
+        return {
+            "vendor_name": "Rejected: Non-Invoice Document",
+            "invoice_date": None,
+            "due_date": None,
+            "line_items": [],
+            "subtotal": None,
+            "tax_amount": None,
+            "grand_total": 0.0,
+            "rejection_error": str(e),
+        }
+    except Exception as e:
+        st.error(f"❌ Extraction Error: {e}")
+        return {
+            "vendor_name": "Extraction Error",
+            "invoice_date": None,
+            "due_date": None,
+            "line_items": [],
+            "subtotal": None,
+            "tax_amount": None,
+            "grand_total": 0.0,
+            "rejection_error": str(e),
+        }
 
 
 # ---------------- SIDEBAR NAVIGATION ----------------

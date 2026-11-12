@@ -12,6 +12,7 @@ import json
 import logging
 from pathlib import Path
 
+import time
 from evals.defect_tracker import DefectTracker
 from pipeline.extractor import extract_invoice
 
@@ -25,6 +26,41 @@ logging.basicConfig(
 ROOT_DIR = Path(__file__).resolve().parent.parent
 TEST_PACK_DIR = ROOT_DIR / "test_pack"
 OUTPUTS_DIR = ROOT_DIR / "outputs"
+
+DOC_EDGE_CATEGORIES = {
+    "doc_01_clean_digital_single_item.pdf": (
+        "Clean Digital / Pipe-Delimited Date Header",
+        "Single-line pipe delimited dates and exact 8% tax calculation",
+    ),
+    "doc_02_clean_digital_multi_item.pdf": (
+        "Clean Digital / Multi-Item Service Table",
+        "4-item multi-row invoice table with line multiplication and subtotal",
+    ),
+    "doc_03_photo_crumpled_receipt.png": (
+        "Crumpled Mobile Photo Receipt",
+        "Folded physical receipt with uneven margins, parentheses in items, and no due date",
+    ),
+    "doc_04_photo_low_light_blurry.png": (
+        "Low-Light Blurry Photo Capture",
+        "Low contrast mobile photo receipt with parentheses (1 Gal) and small fonts",
+    ),
+    "doc_05_missing_tax_field.pdf": (
+        "Missing Tax / Reverse Charge B2B",
+        "International cross-border logistics invoice with omitted tax (null tax_amount)",
+    ),
+    "doc_06_missing_dates_partial.pdf": (
+        "Partial Dates / Omitted Due Date",
+        "Industrial wholesale bill with valid invoice date but omitted due date",
+    ),
+    "doc_07_complex_multi_page_table.pdf": (
+        "Multi-Page High-Density Table",
+        "Multi-page enterprise engineering statement with multi-item table",
+    ),
+    "doc_08_decimal_edge_case.png": (
+        "Decimal Precision & Decimal Multipliers",
+        "Micro-decimal item descriptions (0.01mm) and high-value equipment totals ($1250.00)",
+    ),
+}
 
 
 def run_benchmark(engine: str = "auto") -> None:
@@ -47,8 +83,13 @@ def run_benchmark(engine: str = "auto") -> None:
             logger.warning("Test document '%s' does not exist on disk, skipping.", doc_name)
             continue
 
-        logger.info("Evaluating '%s'...", doc_name)
+        cat_info = DOC_EDGE_CATEGORIES.get(
+            doc_name, ("Standard Document", "Standard financial invoice format")
+        )
+
+        logger.info("Evaluating '%s' (%s)...", doc_name, cat_info[0])
         predicted = None
+        start_t = time.perf_counter()
         try:
             predicted = extract_invoice(
                 document_path=doc_path,
@@ -57,17 +98,25 @@ def run_benchmark(engine: str = "auto") -> None:
                 strict_math=False,
                 output_dir=OUTPUTS_DIR,
             )
+            elapsed_ms = (time.perf_counter() - start_t) * 1000.0
             tracker.evaluate_document(
                 document_id=doc_name,
                 predicted=predicted,
                 ground_truth=expected_gt,
+                latency_ms=elapsed_ms,
+                category=cat_info[0],
+                details=cat_info[1],
             )
         except Exception as e:
+            elapsed_ms = (time.perf_counter() - start_t) * 1000.0
             logger.error("Extraction error for '%s': %s", doc_name, e)
             tracker.evaluate_document(
                 document_id=doc_name,
                 predicted=None,
                 ground_truth=expected_gt,
+                latency_ms=elapsed_ms,
+                category=cat_info[0],
+                details=f"Extraction failure: {e}",
             )
 
     report_md_path = OUTPUTS_DIR / "evaluation_report.md"

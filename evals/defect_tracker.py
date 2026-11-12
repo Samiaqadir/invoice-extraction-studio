@@ -79,6 +79,9 @@ class EvaluationSummary(BaseModel):
     defects_by_severity: Dict[str, int]
     document_accuracy_rate: float
     field_accuracy_rate: float
+    average_latency_ms: float = 0.0
+    qa_matrix: List[Dict[str, Any]] = Field(default_factory=list)
+    known_limitations: List[Dict[str, str]] = Field(default_factory=list)
     timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
@@ -93,11 +96,13 @@ class DefectTracker:
         self.name = name
         self.defects: List[DefectRecord] = []
         self._document_results: Dict[str, List[DefectRecord]] = {}
+        self._document_metadata: Dict[str, Dict[str, Any]] = {}
 
     def clear(self) -> None:
         """Resets the defect tracking state."""
         self.defects = []
         self._document_results = {}
+        self._document_metadata = {}
 
     @staticmethod
     def _is_empty(val: Any) -> bool:
@@ -153,6 +158,9 @@ class DefectTracker:
         document_id: str,
         predicted: Union[Invoice, Dict[str, Any], None],
         ground_truth: Union[Invoice, Dict[str, Any]],
+        latency_ms: float = 0.0,
+        category: str = "Standard Invoice",
+        details: str = "",
     ) -> List[DefectRecord]:
         """
         Compares predicted extraction against ground truth, records all detected defects,
@@ -173,6 +181,8 @@ class DefectTracker:
             else dict(ground_truth)
         )
 
+        total_fields = 6 + 4 * len(gt_dict.get("line_items", []) or [])
+
         # Case 1: Complete extraction failure
         if pred_dict is None:
             defects.append(
@@ -187,6 +197,15 @@ class DefectTracker:
                 )
             )
             self._record_defects(document_id, defects)
+            self._document_metadata[document_id] = {
+                "document_id": document_id,
+                "category": category,
+                "status": "DEFECT",
+                "latency_ms": round(latency_ms, 1),
+                "field_accuracy": 0.0,
+                "defects_count": len(defects),
+                "details": details or "Extraction failed",
+            }
             return defects
 
         # Case 2: Standard header field evaluation
@@ -404,6 +423,17 @@ class DefectTracker:
         defects.extend(math_defects)
 
         self._record_defects(document_id, defects)
+
+        field_acc = max(0.0, round((1.0 - (len(defects) / max(1, total_fields))) * 100.0, 1))
+        self._document_metadata[document_id] = {
+            "document_id": document_id,
+            "category": category,
+            "status": "PASS" if len(defects) == 0 else "DEFECT",
+            "latency_ms": round(latency_ms, 1),
+            "field_accuracy": field_acc,
+            "defects_count": len(defects),
+            "details": details or ("Zero defects detected" if len(defects) == 0 else f"{len(defects)} defect(s) detected"),
+        }
         return defects
 
     def _check_prediction_math_discrepancies(
@@ -546,6 +576,36 @@ class DefectTracker:
             0.0, 100.0 - (total_defs / total_fields_estimated) * 100.0
         )
 
+        matrix = list(self._document_metadata.values())
+        avg_latency = (
+            round(sum(m["latency_ms"] for m in matrix) / len(matrix), 1)
+            if matrix
+            else 0.0
+        )
+
+        known_limitations = [
+            {
+                "topic": "Non-Invoice Document Guardrails",
+                "scope": "Resumes, CVs, Corporate Memos, Essays, Corrupted/Empty files",
+                "behavior": "Pre-flight heuristic & domain validator rejects non-invoices upfront with HTTP 422 NonInvoiceDocumentError.",
+            },
+            {
+                "topic": "Degraded Scan Fallback Coordinates",
+                "scope": "Mobile camera photos, low-contrast, crumpled or folded receipts",
+                "behavior": "Visual amber fallback bounding boxes generated; flagged with degraded status for manual reviewer verification.",
+            },
+            {
+                "topic": "Missing Tax in Reverse-Charge Invoices",
+                "scope": "Cross-border B2B transactions without local tax (doc_05)",
+                "behavior": "Schema permits null tax_amount while arithmetic validator skips tax addition and flags amber review indicator.",
+            },
+            {
+                "topic": "Single-Line Multi-Date Disambiguation",
+                "scope": "Invoices with 'Invoice Date: YYYY-MM-DD | Due Date: YYYY-MM-DD'",
+                "behavior": "Label-anchored regex parsing disambiguates invoice_date and due_date on identical lines.",
+            },
+        ]
+
         return EvaluationSummary(
             total_documents=total_docs,
             perfect_documents=perfect_docs,
@@ -555,6 +615,9 @@ class DefectTracker:
             defects_by_severity=by_sev,
             document_accuracy_rate=round(doc_acc, 2),
             field_accuracy_rate=round(field_acc, 2),
+            average_latency_ms=avg_latency,
+            qa_matrix=matrix,
+            known_limitations=known_limitations,
         )
 
     def generate_markdown_report(self) -> str:
@@ -571,24 +634,41 @@ class DefectTracker:
             f"- **Defective Documents:** {summary.defective_documents}",
             f"- **Document-Level Accuracy:** {summary.document_accuracy_rate}%",
             f"- **Estimated Field Accuracy:** {summary.field_accuracy_rate}%",
+            f"- **Average Extraction Latency:** {summary.average_latency_ms} ms",
             f"- **Total Defect Instances:** {summary.total_defects}",
             "",
-            "## Defects by Canonical Category",
-            "| Defect Category | Count | Description |",
-            "|---|---|---|",
-            f"| `field_missing` | {summary.defects_by_type.get('field_missing', 0)} | Expected field or line item missing/null |",
-            f"| `ocr_misrecognition` | {summary.defects_by_type.get('ocr_misrecognition', 0)} | Character confusion, typos, or noisy text |",
-            f"| `decimal_misalignment` | {summary.defects_by_type.get('decimal_misalignment', 0)} | Power-of-10 shifted values (e.g. 10x, 100x) |",
-            f"| `mathematical_discrepancy` | {summary.defects_by_type.get('mathematical_discrepancy', 0)} | Line item products or subtotal+tax sum errors |",
-            "",
-            "## Defects by Severity",
-            f"- **Critical:** {summary.defects_by_severity.get('critical', 0)}",
-            f"- **High:** {summary.defects_by_severity.get('high', 0)}",
-            f"- **Medium:** {summary.defects_by_severity.get('medium', 0)}",
-            f"- **Low:** {summary.defects_by_severity.get('low', 0)}",
-            "",
-            "## Detailed Defect Log",
+            "## QA Test Matrix (All 8 Documents & Edge Cases)",
+            "| Document | Edge Case Category | Status | Latency (ms) | Field Accuracy | Defects Found | Details |",
+            "|---|---|:---:|:---:|:---:|:---:|---|",
         ]
+
+        for m in summary.qa_matrix:
+            badge = "🟢 PASS" if m["status"] == "PASS" else "🔴 DEFECT"
+            lines.append(
+                f"| `{m['document_id']}` | **{m['category']}** | {badge} | {m['latency_ms']} ms | "
+                f"{m['field_accuracy']}% | {m['defects_count']} | {m['details']} |"
+            )
+
+        lines.extend(
+            [
+                "",
+                "## Defects by Canonical Category",
+                "| Defect Category | Count | Description |",
+                "|---|---|---|",
+                f"| `field_missing` | {summary.defects_by_type.get('field_missing', 0)} | Expected field or line item missing/null |",
+                f"| `ocr_misrecognition` | {summary.defects_by_type.get('ocr_misrecognition', 0)} | Character confusion, typos, or noisy text |",
+                f"| `decimal_misalignment` | {summary.defects_by_type.get('decimal_misalignment', 0)} | Power-of-10 shifted values (e.g. 10x, 100x) |",
+                f"| `mathematical_discrepancy` | {summary.defects_by_type.get('mathematical_discrepancy', 0)} | Line item products or subtotal+tax sum errors |",
+                "",
+                "## Defects by Severity",
+                f"- **Critical:** {summary.defects_by_severity.get('critical', 0)}",
+                f"- **High:** {summary.defects_by_severity.get('high', 0)}",
+                f"- **Medium:** {summary.defects_by_severity.get('medium', 0)}",
+                f"- **Low:** {summary.defects_by_severity.get('low', 0)}",
+                "",
+                "## Detailed Defect Log",
+            ]
+        )
 
         if not self.defects:
             lines.extend(
@@ -616,6 +696,19 @@ class DefectTracker:
                     f"| `{d.defect_id}` | `{d.document_id}` | `{d.defect_type.value}` | `{d.field_path}` "
                     f"| `{exp_clean}` | `{act_clean}` | **{d.severity.value}** | {msg_clean} |"
                 )
+
+        lines.extend(
+            [
+                "",
+                "## Known Parsing Limitations & Error-Handling Log",
+                "| Domain Boundary / Feature | Scope | System Behavior & Mitigation |",
+                "|---|---|---|",
+            ]
+        )
+        for kl in summary.known_limitations:
+            lines.append(
+                f"| **{kl['topic']}** | {kl['scope']} | {kl['behavior']} |"
+            )
 
         return "\n".join(lines)
 

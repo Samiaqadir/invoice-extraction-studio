@@ -1,8 +1,14 @@
 {
-  "due_date": "2026-10-18",
+  "due_date": null,
   "grand_total": 30.85,
   "invoice_date": "2026-10-18",
   "line_items": [
+    {
+      "description": "Artisan Latte (Large)",
+      "quantity": 2.0,
+      "total": 11.0,
+      "unit_price": 5.5
+    },
     {
       "description": "Avocado Sourdough Toast",
       "quantity": 1.0,

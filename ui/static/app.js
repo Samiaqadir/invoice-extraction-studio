@@ -28,6 +28,8 @@ const viewerMeta = document.getElementById("viewerMeta");
 const docImage = document.getElementById("docImage");
 const viewerLoading = document.getElementById("viewerLoading");
 const imageWrapper = document.getElementById("imageWrapper");
+const bboxOverlay = document.getElementById("bboxOverlay");
+let activeBoundingBoxes = [];
 
 const pageControls = document.getElementById("pageControls");
 const pageIndicator = document.getElementById("pageIndicator");
@@ -107,6 +109,20 @@ function setupEventListeners() {
   inputDueDate.addEventListener("input", onFieldChange);
   inputSubtotal.addEventListener("input", onFieldChange);
   inputGrandTotal.addEventListener("input", onFieldChange);
+
+  // Field focus highlight overlay links
+  inputVendor.addEventListener("focus", () => highlightField("vendor_name"));
+  inputVendor.addEventListener("blur", () => unhighlightField("vendor_name"));
+  inputInvDate.addEventListener("focus", () => highlightField("invoice_date"));
+  inputInvDate.addEventListener("blur", () => unhighlightField("invoice_date"));
+  inputDueDate.addEventListener("focus", () => highlightField("due_date"));
+  inputDueDate.addEventListener("blur", () => unhighlightField("due_date"));
+  inputSubtotal.addEventListener("focus", () => highlightField("subtotal"));
+  inputSubtotal.addEventListener("blur", () => unhighlightField("subtotal"));
+  inputTax.addEventListener("focus", () => highlightField("tax_amount"));
+  inputTax.addEventListener("blur", () => unhighlightField("tax_amount"));
+  inputGrandTotal.addEventListener("focus", () => highlightField("grand_total"));
+  inputGrandTotal.addEventListener("blur", () => unhighlightField("grand_total"));
   
   inputTax.addEventListener("input", () => {
     checkTaxExempt.checked = false;
@@ -228,7 +244,17 @@ async function loadDocument(docName, reExtract = false) {
 
     if (!res.ok) {
       const err = await res.json();
-      throw new Error(err.detail || "Extraction failed");
+      if (res.status === 422 && err.error === "NON_INVOICE_DOCUMENT") {
+        renderAlertBanner(
+          "red",
+          `🛡️ <strong>Document Upload Rejected:</strong> ${escapeHtml(err.message)} <br><span class="text-xs text-red-600 font-mono">Classification: ${escapeHtml(err.reason || err.detected_type || 'Non-Invoice Document')}</span>`
+        );
+        setOverallStatus("red", 0, "Rejected");
+        clearBoundingBoxes();
+        renderEmptyFormForRejection(err.message);
+        return;
+      }
+      throw new Error(err.detail || err.message || "Extraction failed");
     }
 
     const payload = await res.json();
@@ -240,6 +266,7 @@ async function loadDocument(docName, reExtract = false) {
     updatePageControls();
 
     renderFormFields(currentData, payload.confidence);
+    renderBoundingBoxes(payload.bounding_boxes || []);
   } catch (err) {
     renderAlertBanner("red", `Extraction Error: ${escapeHtml(err.message)}`);
     setOverallStatus("red", 0, "Error");
@@ -414,10 +441,122 @@ function renderLineItems(items) {
       onFieldChange();
     });
 
+    tr.addEventListener("mouseenter", () => highlightField(`line_items[${index}]`));
+    tr.addEventListener("mouseleave", () => unhighlightField(`line_items[${index}]`));
+
     lineItemsTableBody.appendChild(tr);
   });
 
   updateCalculatedLineItemsSum();
+}
+
+
+function clearBoundingBoxes() {
+  if (bboxOverlay) {
+    bboxOverlay.innerHTML = "";
+  }
+  activeBoundingBoxes = [];
+}
+
+
+function renderBoundingBoxes(boxes) {
+  clearBoundingBoxes();
+  if (!bboxOverlay || !boxes || !boxes.length) return;
+  activeBoundingBoxes = boxes;
+
+  boxes.forEach(b => {
+    if (!b.box || b.status === "not_found") return;
+    const [x0, y0, x1, y1] = b.box;
+    const w = (x1 - x0) * 100;
+    const h = (y1 - y0) * 100;
+    const l = x0 * 100;
+    const t = y0 * 100;
+
+    const el = document.createElement("div");
+    el.className = `bbox-marker bbox-${b.field.replace(/[\[\].]/g, '_')}`;
+    el.dataset.field = b.field;
+    el.style.position = "absolute";
+    el.style.left = `${l}%`;
+    el.style.top = `${t}%`;
+    el.style.width = `${Math.max(1.5, w)}%`;
+    el.style.height = `${Math.max(1.5, h)}%`;
+    el.style.pointerEvents = "auto";
+    el.style.cursor = "pointer";
+    el.style.transition = "all 0.15s ease-in-out";
+
+    if (b.status === "degraded" || b.status === "fallback") {
+      el.style.border = "2px dashed #f59e0b";
+      el.style.backgroundColor = "rgba(245, 158, 11, 0.14)";
+      el.title = `${b.label || b.field} (Degraded / Fallback Scan)`;
+    } else {
+      el.style.border = "2px solid #3b82f6";
+      el.style.backgroundColor = "rgba(59, 130, 246, 0.12)";
+      el.title = `${b.label || b.field} (Extracted)`;
+    }
+
+    el.addEventListener("mouseenter", () => highlightField(b.field));
+    el.addEventListener("mouseleave", () => unhighlightField(b.field));
+
+    bboxOverlay.appendChild(el);
+  });
+}
+
+
+function highlightField(fieldName) {
+  if (!bboxOverlay) return;
+  const safeName = fieldName.replace(/[\[\].]/g, '_');
+  const boxes = bboxOverlay.querySelectorAll(`.bbox-${safeName}`);
+  boxes.forEach(bx => {
+    bx.style.borderColor = "#10b981";
+    bx.style.backgroundColor = "rgba(16, 185, 129, 0.25)";
+    bx.style.boxShadow = "0 0 12px rgba(16, 185, 129, 0.5)";
+    bx.style.zIndex = "20";
+  });
+}
+
+
+function unhighlightField(fieldName) {
+  if (!bboxOverlay) return;
+  const safeName = fieldName.replace(/[\[\].]/g, '_');
+  const boxes = bboxOverlay.querySelectorAll(`.bbox-${safeName}`);
+  boxes.forEach(bx => {
+    const isDegraded = bx.dataset.field && (activeBoundingBoxes.find(b => b.field === bx.dataset.field)?.status === "degraded" || activeBoundingBoxes.find(b => b.field === bx.dataset.field)?.status === "fallback");
+    bx.style.borderColor = isDegraded ? "#f59e0b" : "#3b82f6";
+    bx.style.backgroundColor = isDegraded ? "rgba(245, 158, 11, 0.14)" : "rgba(59, 130, 246, 0.12)";
+    bx.style.boxShadow = "none";
+    bx.style.zIndex = "auto";
+  });
+}
+
+
+function renderEmptyFormForRejection(reasonText) {
+  inputVendor.value = "REJECTED: Non-Invoice Document";
+  inputInvDate.value = "";
+  inputDueDate.value = "";
+  inputSubtotal.value = "";
+  inputTax.value = "";
+  inputGrandTotal.value = "0.00";
+  lineItemsTableBody.innerHTML = `
+    <tr>
+      <td colspan="5" class="p-6 text-center text-sm text-red-600 bg-red-50/50">
+        🛡️ Document was rejected by invoice domain guardrails. No financial table or line items were extracted.
+      </td>
+    </tr>
+  `;
+  badgeVendor.className = "badge badge-red";
+  badgeVendor.textContent = "Rejected";
+  badgeInvDate.className = "badge badge-red";
+  badgeInvDate.textContent = "N/A";
+  badgeDueDate.className = "badge badge-red";
+  badgeDueDate.textContent = "N/A";
+  badgeLineItems.className = "badge badge-red";
+  badgeLineItems.textContent = "N/A";
+  badgeSubtotal.className = "badge badge-red";
+  badgeSubtotal.textContent = "N/A";
+  badgeTax.className = "badge badge-red";
+  badgeTax.textContent = "N/A";
+  badgeGrandTotal.className = "badge badge-red";
+  badgeGrandTotal.textContent = "Rejected";
 }
 
 

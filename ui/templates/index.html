@@ -108,8 +108,10 @@
         </div>
 
         <!-- Rendered Document Image Wrapper -->
-        <div id="imageWrapper" class="transition-all duration-150 inline-block shadow-2xl">
+        <div id="imageWrapper" class="transition-all duration-150 inline-block shadow-2xl relative">
           <img id="docImage" src="" alt="Invoice Preview" class="block rounded border border-slate-700 bg-white max-w-full h-auto hidden">
+          <!-- Bounding Box & Highlight Overlay Layer -->
+          <div id="bboxOverlay" class="absolute inset-0 pointer-events-none"></div>
         </div>
 
       </div>

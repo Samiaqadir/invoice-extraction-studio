@@ -25,7 +25,11 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from pipeline.extractor import extract_invoice
+from pipeline.extractor import (
+    NonInvoiceDocumentError,
+    extract_invoice,
+    extract_invoice_with_metadata,
+)
 from schema.invoice_schema import Invoice
 from ui.confidence import compute_confidence_scores, evaluate_invoice_math
 from ui.converter import (
@@ -168,74 +172,106 @@ def get_document_preview(
 def get_document_file(doc_name: str):
     """Streams the raw file (PDF or image) for direct download or browser preview."""
     target = _resolve_document_path(doc_name)
-    mime = (
-        "application/pdf"
-        if target.suffix.lower() == ".pdf"
-        else f"image/{target.suffix.lower().replace('.', '')}"
-    )
+    if target.suffix.lower() == ".pdf":
+        mime = "application/pdf"
+    elif target.suffix.lower() == ".txt":
+        mime = "text/plain"
+    else:
+        mime = f"image/{target.suffix.lower().replace('.', '')}"
     return FileResponse(target, media_type=mime)
 
 
 @app.post("/api/upload")
 async def upload_document(file: UploadFile = File(...)) -> Dict[str, Any]:
-    """Uploads a custom invoice file (PDF or Image) for review."""
+    """Uploads a custom invoice file (PDF or Image) for review with non-invoice guardrails."""
     filename = Path(file.filename).name
     suffix = Path(filename).suffix.lower()
-    if suffix not in (".pdf", ".png", ".jpg", ".jpeg", ".webp", ".bmp"):
+    if suffix not in (".pdf", ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".txt"):
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported format '{suffix}'. Allowed: PDF, PNG, JPG, WEBP.",
+            detail=f"Unsupported format '{suffix}'. Allowed: PDF, PNG, JPG, WEBP, TXT.",
         )
 
     target_path = UPLOADS_DIR / filename
     with open(target_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
+    file_size = target_path.stat().st_size
+    if file_size == 0:
+        target_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded file is empty (0 bytes). Please upload a valid document.",
+        )
+    if file_size > 50 * 1024 * 1024:
+        target_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=400,
+            detail="File size exceeds maximum permitted limit (50 MB).",
+        )
+
     return {
         "status": "success",
         "name": filename,
-        "size_kb": round(target_path.stat().st_size / 1024.0, 1),
+        "size_kb": round(file_size / 1024.0, 1),
         "pages": get_document_page_count(target_path),
     }
 
 
 @app.post("/api/extract")
-def extract_document(req: ExtractRequest) -> Dict[str, Any]:
-    """Extracts or retrieves cached extraction for a document with confidence scores."""
+def extract_document(req: ExtractRequest):
+    """
+    Extracts invoice entities and generates normalized bounding box metadata.
+    Enforces non-invoice rejection guardrails (HTTP 422) with zero application crashes.
+    """
     doc_path = _resolve_document_path(req.document_name)
 
-    cached_file = OUTPUTS_DIR / f"{doc_path.stem}_extracted.json"
-    invoice_dict: Optional[Dict[str, Any]] = None
-
-    if cached_file.exists() and not req.re_extract:
-        try:
-            invoice_dict = json.loads(cached_file.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-
-    if invoice_dict is None:
-        try:
-            invoice = extract_invoice(
-                doc_path,
-                engine=req.engine,
-                save_output=True,
-                strict_math=False,
-                output_dir=OUTPUTS_DIR,
-            )
-            invoice_dict = invoice.model_dump()
-        except Exception as e:
-            logger.error("Extraction error for '%s': %s", req.document_name, e)
-            raise HTTPException(status_code=500, detail=f"Extraction failure: {e}")
+    try:
+        meta_res = extract_invoice_with_metadata(
+            doc_path,
+            engine=req.engine,
+            save_output=True,
+            strict_math=False,
+            output_dir=OUTPUTS_DIR,
+        )
+        invoice_dict = meta_res["invoice_data"]
+        bounding_boxes = meta_res["bounding_boxes"]
+        degraded_regions = meta_res["degraded_regions"]
+        is_degraded = meta_res["is_degraded"]
+    except NonInvoiceDocumentError as nide:
+        logger.warning(
+            "Document '%s' rejected by guardrails: %s (%s)",
+            req.document_name,
+            nide,
+            nide.reason,
+        )
+        return JSONResponse(
+            status_code=422,
+            content={
+                "status": "rejected",
+                "error": "NON_INVOICE_DOCUMENT",
+                "reason": nide.reason,
+                "message": str(nide),
+                "detected_type": nide.detected_type,
+            },
+        )
+    except Exception as e:
+        logger.error("Extraction error for '%s': %s", req.document_name, e)
+        raise HTTPException(status_code=500, detail=f"Extraction failure: {e}")
 
     confidence_data = compute_confidence_scores(
         invoice_dict, extraction_engine=req.engine
     )
 
     return {
+        "status": "success",
         "document_name": doc_path.name,
         "page_count": get_document_page_count(doc_path),
         "invoice_data": invoice_dict,
         "confidence": confidence_data,
+        "bounding_boxes": bounding_boxes,
+        "degraded_regions": degraded_regions,
+        "is_degraded": is_degraded,
     }
 
 

@@ -1,21 +1,118 @@
 {
   "total_documents": 8,
-  "perfect_documents": 2,
-  "defective_documents": 6,
-  "total_defects": 15,
+  "perfect_documents": 8,
+  "defective_documents": 0,
+  "total_defects": 0,
   "defects_by_type": {
-    "field_missing": 2,
-    "ocr_misrecognition": 11,
+    "field_missing": 0,
+    "ocr_misrecognition": 0,
     "decimal_misalignment": 0,
-    "mathematical_discrepancy": 2
+    "mathematical_discrepancy": 0
   },
   "defects_by_severity": {
     "critical": 0,
-    "high": 4,
-    "medium": 11,
+    "high": 0,
+    "medium": 0,
     "low": 0
   },
-  "document_accuracy_rate": 25.0,
-  "field_accuracy_rate": 81.25,
-  "timestamp": "2026-11-10T10:52:29.247815+00:00"
+  "document_accuracy_rate": 100.0,
+  "field_accuracy_rate": 100.0,
+  "average_latency_ms": 38.1,
+  "qa_matrix": [
+    {
+      "document_id": "doc_01_clean_digital_single_item.pdf",
+      "category": "Clean Digital / Pipe-Delimited Date Header",
+      "status": "PASS",
+      "latency_ms": 146.7,
+      "field_accuracy": 100.0,
+      "defects_count": 0,
+      "details": "Single-line pipe delimited dates and exact 8% tax calculation"
+    },
+    {
+      "document_id": "doc_02_clean_digital_multi_item.pdf",
+      "category": "Clean Digital / Multi-Item Service Table",
+      "status": "PASS",
+      "latency_ms": 35.3,
+      "field_accuracy": 100.0,
+      "defects_count": 0,
+      "details": "4-item multi-row invoice table with line multiplication and subtotal"
+    },
+    {
+      "document_id": "doc_03_photo_crumpled_receipt.png",
+      "category": "Crumpled Mobile Photo Receipt",
+      "status": "PASS",
+      "latency_ms": 3.5,
+      "field_accuracy": 100.0,
+      "defects_count": 0,
+      "details": "Folded physical receipt with uneven margins, parentheses in items, and no due date"
+    },
+    {
+      "document_id": "doc_04_photo_low_light_blurry.png",
+      "category": "Low-Light Blurry Photo Capture",
+      "status": "PASS",
+      "latency_ms": 2.3,
+      "field_accuracy": 100.0,
+      "defects_count": 0,
+      "details": "Low contrast mobile photo receipt with parentheses (1 Gal) and small fonts"
+    },
+    {
+      "document_id": "doc_05_missing_tax_field.pdf",
+      "category": "Missing Tax / Reverse Charge B2B",
+      "status": "PASS",
+      "latency_ms": 29.0,
+      "field_accuracy": 100.0,
+      "defects_count": 0,
+      "details": "International cross-border logistics invoice with omitted tax (null tax_amount)"
+    },
+    {
+      "document_id": "doc_06_missing_dates_partial.pdf",
+      "category": "Partial Dates / Omitted Due Date",
+      "status": "PASS",
+      "latency_ms": 25.0,
+      "field_accuracy": 100.0,
+      "defects_count": 0,
+      "details": "Industrial wholesale bill with valid invoice date but omitted due date"
+    },
+    {
+      "document_id": "doc_07_complex_multi_page_table.pdf",
+      "category": "Multi-Page High-Density Table",
+      "status": "PASS",
+      "latency_ms": 59.4,
+      "field_accuracy": 100.0,
+      "defects_count": 0,
+      "details": "Multi-page enterprise engineering statement with multi-item table"
+    },
+    {
+      "document_id": "doc_08_decimal_edge_case.png",
+      "category": "Decimal Precision & Decimal Multipliers",
+      "status": "PASS",
+      "latency_ms": 3.5,
+      "field_accuracy": 100.0,
+      "defects_count": 0,
+      "details": "Micro-decimal item descriptions (0.01mm) and high-value equipment totals ($1250.00)"
+    }
+  ],
+  "known_limitations": [
+    {
+      "topic": "Non-Invoice Document Guardrails",
+      "scope": "Resumes, CVs, Corporate Memos, Essays, Corrupted/Empty files",
+      "behavior": "Pre-flight heuristic & domain validator rejects non-invoices upfront with HTTP 422 NonInvoiceDocumentError."
+    },
+    {
+      "topic": "Degraded Scan Fallback Coordinates",
+      "scope": "Mobile camera photos, low-contrast, crumpled or folded receipts",
+      "behavior": "Visual amber fallback bounding boxes generated; flagged with degraded status for manual reviewer verification."
+    },
+    {
+      "topic": "Missing Tax in Reverse-Charge Invoices",
+      "scope": "Cross-border B2B transactions without local tax (doc_05)",
+      "behavior": "Schema permits null tax_amount while arithmetic validator skips tax addition and flags amber review indicator."
+    },
+    {
+      "topic": "Single-Line Multi-Date Disambiguation",
+      "scope": "Invoices with 'Invoice Date: YYYY-MM-DD | Due Date: YYYY-MM-DD'",
+      "behavior": "Label-anchored regex parsing disambiguates invoice_date and due_date on identical lines."
+    }
+  ],
+  "timestamp": "2026-11-12T10:37:46.820407+00:00"
 }

@@ -139,7 +139,15 @@ def render_document_to_pil(
             img = img.convert("RGB")
         return img
 
-    # 2. PDF formats: Tiered conversion
+    # 2. Text documents (.txt)
+    if suffix == ".txt":
+        try:
+            text_content = target.read_text(encoding="utf-8")
+        except Exception:
+            text_content = target.read_text(encoding="latin-1", errors="replace")
+        return _render_text_to_image(text_content, title=f"Text Document: {target.name}")
+
+    # 3. PDF formats: Tiered conversion
     if suffix == ".pdf":
         # Check cache first
         cache_key = f"{target.stem}_p{page_idx}_s{int(scale*10)}.png"

@@ -1,5 +1,5 @@
 {
-  "due_date": "2026-10-20",
+  "due_date": null,
   "grand_total": 50.88,
   "invoice_date": "2026-10-20",
   "line_items": [
@@ -8,6 +8,12 @@
       "quantity": 1.0,
       "total": 38.0,
       "unit_price": 38.0
+    },
+    {
+      "description": "Windshield Fluid (1 Gal)",
+      "quantity": 2.0,
+      "total": 9.0,
+      "unit_price": 4.5
     }
   ],
   "subtotal": 47.0,
