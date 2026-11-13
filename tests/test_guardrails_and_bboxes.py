@@ -145,3 +145,4 @@ def test_api_extract_non_invoice_returns_422(tmp_path: Path):
     assert payload["status"] == "rejected"
     assert payload["error"] == "NON_INVOICE_DOCUMENT"
     assert "resume or CV" in payload["message"]
+
